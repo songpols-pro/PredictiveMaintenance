@@ -8,6 +8,7 @@ A web app for maintenance engineers, reliability engineers and plant managers th
 | [`screenshots/`](screenshots) | Every screen at 1440 and 1024 px, light and dark, loading / empty / error states, Thai (`th/`) and the website (`website/`) |
 | [`tools/`](tools) | QA scripts that drive headless Chrome: axe-core audit, keyboard / reflow / reduced-motion checks, screenshots |
 | [`NOTES.md`](NOTES.md) | Delivery notes in Thai: assumptions, differences from the brief, WCAG 2.2 AA report |
+| [`DEPLOY.md`](DEPLOY.md) | Deploy guide in Thai: Firebase App Hosting, Firestore for the demo-request form, optional sales email |
 
 ```bash
 cd pdm-app

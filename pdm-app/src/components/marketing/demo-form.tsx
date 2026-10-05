@@ -8,60 +8,67 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { invalidFields, MACHINE_RANGES, MAX_LENGTH, type DemoField } from "@/lib/demo-request";
 import { useI18n } from "@/lib/i18n/provider";
 import { submitDemoRequest } from "@/lib/leads";
 import { cn } from "@/lib/utils";
 
-type Field = "name" | "company" | "email" | "phone" | "machines" | "consent";
-const MACHINE_RANGES = ["lt20", "20-100", "100-500", "500+"];
+type Field = DemoField;
+const EMPTY = { name: "", company: "", jobTitle: "", email: "", phone: "", machines: "", message: "", website: "" };
 
 export function DemoForm() {
   const { m, locale } = useI18n();
   const c = m.marketing.contact;
   const uid = useId();
   const id = (f: string) => `${uid}-${f}`;
-  const [values, setValues] = useState({ name: "", company: "", jobTitle: "", email: "", phone: "", machines: "", message: "" });
+  const [values, setValues] = useState(EMPTY);
   const [consent, setConsent] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<Field, string>>>({});
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const [failures, setFailures] = useState(0);
+  const [failed, setFailed] = useState(false);
   const summaryRef = useRef<HTMLDivElement>(null);
   const successRef = useRef<HTMLHeadingElement>(null);
+  const failedRef = useRef<HTMLDivElement>(null);
 
-  // Move focus after React has rendered the summary or the success message.
+  // Move focus after React has rendered the summary, the send error or the success message.
   useEffect(() => {
     if (attempt > 0) summaryRef.current?.focus();
   }, [attempt]);
+  useEffect(() => {
+    if (failures > 0) failedRef.current?.focus();
+  }, [failures]);
   useEffect(() => {
     if (sent) successRef.current?.focus();
   }, [sent]);
 
   const set = (key: keyof typeof values) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setValues((v) => ({ ...v, [key]: e.target.value }));
 
-  function validate() {
-    const e: Partial<Record<Field, string>> = {};
-    if (!values.name.trim()) e.name = c.errName;
-    if (!values.company.trim()) e.company = c.errCompany;
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email.trim())) e.email = c.errEmail;
-    if (values.phone.replace(/\D/g, "").length < 9) e.phone = c.errPhone;
-    if (!values.machines) e.machines = c.errMachines;
-    if (!consent) e.consent = c.errConsent;
-    return e;
-  }
+  const errorText: Record<Field, string> = { name: c.errName, company: c.errCompany, email: c.errEmail, phone: c.errPhone, machines: c.errMachines, consent: c.errConsent };
 
   async function submit(ev: React.FormEvent) {
     ev.preventDefault();
-    const e = validate();
+    const request = { ...values, consent, locale };
+    const e = Object.fromEntries(invalidFields(request).map((f) => [f, errorText[f]])) as Partial<Record<Field, string>>;
     setErrors(e);
+    setFailed(false);
     if (Object.keys(e).length) {
       setAttempt((n) => n + 1);
       return;
     }
     setSending(true);
-    await submitDemoRequest({ ...values, consent, locale });
+    // Network errors and a stale page after a new deployment ("Failed to find Server Action")
+    // throw instead of returning, so both paths end in the same retry message.
+    const result = await submitDemoRequest(request).catch(() => ({ ok: false as const }));
     setSending(false);
-    setSent(true);
+    if (result.ok) {
+      setSent(true);
+    } else {
+      setFailed(true);
+      setFailures((n) => n + 1);
+    }
   }
 
   if (sent) {
@@ -77,7 +84,7 @@ export function DemoForm() {
           className="mt-2 h-10 bg-card"
           onClick={() => {
             setSent(false);
-            setValues({ name: "", company: "", jobTitle: "", email: "", phone: "", machines: "", message: "" });
+            setValues(EMPTY);
             setConsent(false);
           }}
         >
@@ -94,7 +101,7 @@ export function DemoForm() {
   });
 
   return (
-    <form onSubmit={submit} noValidate className="flex flex-col gap-5" aria-labelledby={id("title")}>
+    <form onSubmit={submit} noValidate className="relative flex flex-col gap-5" aria-labelledby={id("title")}>
       <div>
         <h3 id={id("title")} className="text-lg font-semibold">
           {c.formTitle}
@@ -122,19 +129,19 @@ export function DemoForm() {
 
       <div className="grid gap-4 sm:grid-cols-2">
         <FormField id={id("name")} label={c.name} required error={errors.name}>
-          <Input id={id("name")} autoComplete="name" value={values.name} onChange={set("name")} className="h-10" {...fieldProps("name")} />
+          <Input id={id("name")} autoComplete="name" maxLength={MAX_LENGTH.name} value={values.name} onChange={set("name")} className="h-10" {...fieldProps("name")} />
         </FormField>
         <FormField id={id("company")} label={c.company} required error={errors.company}>
-          <Input id={id("company")} autoComplete="organization" value={values.company} onChange={set("company")} className="h-10" {...fieldProps("company")} />
+          <Input id={id("company")} autoComplete="organization" maxLength={MAX_LENGTH.company} value={values.company} onChange={set("company")} className="h-10" {...fieldProps("company")} />
         </FormField>
         <FormField id={id("jobTitle")} label={c.jobTitle}>
-          <Input id={id("jobTitle")} autoComplete="organization-title" value={values.jobTitle} onChange={set("jobTitle")} className="h-10" />
+          <Input id={id("jobTitle")} autoComplete="organization-title" maxLength={MAX_LENGTH.jobTitle} value={values.jobTitle} onChange={set("jobTitle")} className="h-10" />
         </FormField>
         <FormField id={id("email")} label={c.email} required error={errors.email}>
-          <Input id={id("email")} type="email" autoComplete="email" value={values.email} onChange={set("email")} className="h-10" {...fieldProps("email")} />
+          <Input id={id("email")} type="email" autoComplete="email" maxLength={MAX_LENGTH.email} value={values.email} onChange={set("email")} className="h-10" {...fieldProps("email")} />
         </FormField>
         <FormField id={id("phone")} label={c.phone} required error={errors.phone}>
-          <Input id={id("phone")} type="tel" autoComplete="tel" inputMode="tel" value={values.phone} onChange={set("phone")} className="h-10" {...fieldProps("phone")} />
+          <Input id={id("phone")} type="tel" autoComplete="tel" inputMode="tel" maxLength={MAX_LENGTH.phone} value={values.phone} onChange={set("phone")} className="h-10" {...fieldProps("phone")} />
         </FormField>
         <FormField id={id("machines")} label={c.machines} required error={errors.machines}>
           <Select value={values.machines} onValueChange={(v) => setValues((s) => ({ ...s, machines: v }))}>
@@ -151,7 +158,7 @@ export function DemoForm() {
           </Select>
         </FormField>
         <FormField id={id("message")} label={c.message} className="sm:col-span-2">
-          <Textarea id={id("message")} rows={4} value={values.message} onChange={set("message")} />
+          <Textarea id={id("message")} rows={4} maxLength={MAX_LENGTH.message} value={values.message} onChange={set("message")} />
         </FormField>
       </div>
 
@@ -169,6 +176,22 @@ export function DemoForm() {
         </div>
         {errors.consent ? <FieldError id={id("consent-err")} text={errors.consent} /> : null}
       </div>
+
+      {/* Honeypot for spam bots: off screen, out of the tab order and hidden from assistive tech. */}
+      <div aria-hidden className="absolute -left-[10000px] size-px overflow-hidden">
+        <label htmlFor={id("website")}>{c.honeypot}</label>
+        <input id={id("website")} name="website" type="text" tabIndex={-1} autoComplete="off" maxLength={MAX_LENGTH.website} value={values.website} onChange={set("website")} />
+      </div>
+
+      {failed ? (
+        <div ref={failedRef} tabIndex={-1} role="alert" className="rounded-lg border border-critical-border bg-critical-bg p-3 text-sm outline-none">
+          <p className="flex items-center gap-1.5 font-semibold text-critical-fg">
+            <TriangleAlert aria-hidden className="size-4 shrink-0" />
+            {c.errSendTitle}
+          </p>
+          <p className="mt-1 text-foreground">{c.errSendDesc}</p>
+        </div>
+      ) : null}
 
       <div>
         <Button type="submit" disabled={sending} className="h-11 px-6 text-base">

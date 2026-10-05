@@ -1,0 +1,22 @@
+# Firebase App Hosting settings for this app. The backend's root directory is /pdm-app.
+# Reference: https://firebase.google.com/docs/app-hosting/configure
+# Values set in the Firebase console (App Hosting > backend > Settings > Environment) override this file.
+
+runConfig:
+  # Scale to zero when nobody visits: no cost while idle, but the first visit after a quiet
+  # period waits a few seconds for an instance to start. Set to 1 to keep one instance warm.
+  minInstances: 0
+  # Upper limit on instances, which also caps the bill if traffic spikes.
+  maxInstances: 4
+  concurrency: 80
+  cpu: 1
+  memoryMiB: 512
+
+# Uncomment to email every demo request to the sales team (comma-separated addresses).
+# It needs the "Trigger Email from Firestore" extension, set up on the "mail" collection
+# (see README > Deploy to Firebase). Without it, requests are only stored in Firestore.
+# env:
+#   - variable: LEADS_NOTIFY_EMAIL
+#     value: sales@your-company.co.th
+#     availability:
+#       - RUNTIME

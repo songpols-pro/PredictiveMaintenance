@@ -12,6 +12,8 @@ npm run dev        # http://localhost:3000
 npm run build      # production build
 ```
 
+Deploy: Firebase App Hosting, with the demo-request form saved to Cloud Firestore. Step-by-step guide (Thai): [`../DEPLOY.md`](../DEPLOY.md).
+
 ## Routes
 
 | Route | Screen |
@@ -44,16 +46,31 @@ src/
     mock/                 deterministic mock data (50 assets, 3 sites, 90 days hourly sensor data)
     use-query.ts          tiny data hook (loading / error / silent refetch after mutations)
     site-config.ts        contact details shown on the website (placeholders — replace before launch)
-    leads.ts              demo-request submit (stub — connect to CRM/email before launch)
+    demo-request.ts       demo-request fields and validation, shared by the form and the server
+    leads.ts              server action: stores demo requests in Firestore (+ optional email to sales)
+    firebase-admin.ts     Firestore access for server code (no keys needed on App Hosting)
 ```
 
 ### Before the website goes live
 
 1. Replace the placeholders in `src/lib/site-config.ts` (LINE ID and link, phone, email).
-2. Implement `submitDemoRequest` in `src/lib/leads.ts` (today nothing is sent).
+2. Deploy with Firestore and, if wanted, the sales email (see [`../DEPLOY.md`](../DEPLOY.md)). Without Firestore, `npm run dev` pretends to send and a production build shows "We couldn't send your request".
 3. Have the short privacy notice and the consent text reviewed for PDPA.
 4. Confirm the product claims in the copy (integrations, deployment options) in `src/lib/i18n/messages/marketing-*.ts`.
 5. Re-capture the product tour images (`public/marketing/{en,th}/*.webp`) with `node ../tools/cdp.mjs ../tools/task-tour-shots.mjs` when the UI changes.
+
+### Firebase
+
+| File | Purpose |
+|---|---|
+| `apphosting.yaml` | App Hosting / Cloud Run settings (scale to zero, max 4 instances) and the optional `LEADS_NOTIFY_EMAIL` |
+| `firestore.rules` | No direct browser access; only the server action (Admin SDK) writes |
+| `firebase.json` | Firebase CLI: rules deploy and the local Firestore emulator (port 8085) |
+| `.env.example` | Local settings for the emulator or a real project |
+
+Firestore collections written by `submitDemoRequest`:
+- `demoRequests`: the form fields, `locale`, a `consent` record (wording and time), `status` (`new`, or `spam` when the honeypot is filled), `createdAt`, `deleteAfter` (+12 months, for a TTL policy).
+- `mail` (only when `LEADS_NOTIFY_EMAIL` is set): a message for the "Trigger Email from Firestore" extension, with `replyTo` set to the requester, and `deleteAfter` (+30 days).
 
 ### Swapping in a real backend
 
