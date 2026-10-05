@@ -15,6 +15,8 @@ import { api, type AssetRow } from "@/lib/api";
 import type { Alert, MaintenanceType, PartLine, Priority } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useDialogFocus } from "./use-dialog-focus";
+import { useI18n } from "@/lib/i18n/provider";
+import type { Messages } from "@/lib/i18n/messages";
 
 export interface WorkOrderDraft {
   assetId?: string;
@@ -32,7 +34,7 @@ export interface WorkOrderDraft {
 }
 
 /** Pre-fills a work order from an asset's prediction and (optionally) the alert that triggered it. */
-export function draftFromAsset(asset: AssetRow, alert?: Alert): WorkOrderDraft {
+export function draftFromAsset(asset: AssetRow, alert: Alert | undefined, m: Messages): WorkOrderDraft {
   const p = asset.prediction;
   const degrading = asset.status === "critical" || asset.status === "warning";
   if (asset.status === "offline" || alert?.source === "connectivity") {
@@ -40,8 +42,8 @@ export function draftFromAsset(asset: AssetRow, alert?: Alert): WorkOrderDraft {
       assetId: asset.id,
       alertId: alert?.id,
       alertTitle: alert?.title,
-      title: `Restore sensor connectivity – ${asset.name}`,
-      description: alert?.description ?? "Asset is not sending data. Check sensor power, wiring and the edge gateway.",
+      title: m.woForm.restoreTitle(asset.name),
+      description: alert?.description ?? m.woForm.restoreDesc,
       priority: "P3",
       type: "corrective",
       assigneeId: alert?.assigneeId,
@@ -53,10 +55,10 @@ export function draftFromAsset(asset: AssetRow, alert?: Alert): WorkOrderDraft {
     assetId: asset.id,
     alertId: alert?.id,
     alertTitle: alert?.title,
-    title: degrading && p ? `${p.failureModes[0].mode} – ${asset.name}` : `Inspection – ${asset.name}`,
+    title: degrading && p ? `${p.failureModes[0].mode} – ${asset.name}` : m.woForm.inspectionTitle(asset.name),
     description:
       degrading && p
-        ? `${p.recommendedAction}\n\nModel: ${p.failureModes[0].mode} (${Math.round(p.failureModes[0].probability * 100)}% likely). RUL ${p.rulDays} d (${p.rulLow}–${p.rulHigh} d), ${Math.round(p.confidence * 100)}% confidence.`
+        ? `${p.recommendedAction}\n\n${m.woForm.modelNote(p.failureModes[0].mode, Math.round(p.failureModes[0].probability * 100), p.rulDays, p.rulLow, p.rulHigh, Math.round(p.confidence * 100))}`
         : (alert?.description ?? ""),
     priority: alert?.severity === "critical" || asset.status === "critical" ? "P1" : degrading ? "P2" : "P3",
     type: degrading ? "predictive" : "inspection",
@@ -104,6 +106,8 @@ export function CreateWorkOrderDialog({
 
 function WorkOrderForm({ draft, onDone }: { draft: WorkOrderDraft; onDone: (created: boolean) => void }) {
   const router = useRouter();
+  const { m } = useI18n();
+  const w = m.woForm;
   const uid = useId();
   const [today] = useState(() => format(new Date(), "yyyy-MM-dd"));
   const [title, setTitle] = useState(draft.title ?? "");
@@ -125,11 +129,11 @@ function WorkOrderForm({ draft, onDone }: { draft: WorkOrderDraft; onDone: (crea
 
   function validate(): Errors {
     const e: Errors = {};
-    if (!title.trim()) e.title = "Enter a title, for example “Replace drive-end bearing”.";
-    if (!assetId) e.assetId = "Choose the asset this work applies to.";
-    if (!dueDate) e.dueDate = "Choose a due date.";
-    else if (dueDate < today) e.dueDate = "Due date can’t be in the past.";
-    if (parts.some((p) => !p.partNo || p.qty < 1)) e.parts = "Each part needs a part number and a quantity of at least 1.";
+    if (!title.trim()) e.title = w.errTitle;
+    if (!assetId) e.assetId = w.errAsset;
+    if (!dueDate) e.dueDate = w.errDueRequired;
+    else if (dueDate < today) e.dueDate = w.errDuePast;
+    if (parts.some((p) => !p.partNo || p.qty < 1)) e.parts = w.errParts;
     return e;
   }
 
@@ -155,9 +159,9 @@ function WorkOrderForm({ draft, onDone }: { draft: WorkOrderDraft; onDone: (crea
       parts,
     });
     setSaving(false);
-    toast.success(`Work order ${wo.id} created`, {
-      description: draft.alertId ? `Linked to alert ${draft.alertId}.` : undefined,
-      action: { label: "View", onClick: () => router.push(`/work-orders?wo=${wo.id}`) },
+    toast.success(w.toastCreated(wo.id), {
+      description: draft.alertId ? w.toastLinked(draft.alertId) : undefined,
+      action: { label: m.common.view, onClick: () => router.push(`/app/work-orders?wo=${wo.id}`) },
     });
     onDone(true);
   }
@@ -165,10 +169,10 @@ function WorkOrderForm({ draft, onDone }: { draft: WorkOrderDraft; onDone: (crea
   return (
     <form ref={formRef} noValidate onSubmit={submit} className="grid gap-4">
       <DialogHeader>
-        <DialogTitle>Create work order</DialogTitle>
+        <DialogTitle>{w.title}</DialogTitle>
         <DialogDescription>
-          Fields marked <span aria-hidden>*</span>
-          <span className="sr-only">with an asterisk</span> are required.
+          {w.requiredPrefix} <span aria-hidden>*</span>
+          <span className="sr-only">{w.requiredSr}</span> {w.requiredSuffix}
         </DialogDescription>
       </DialogHeader>
 
@@ -176,21 +180,21 @@ function WorkOrderForm({ draft, onDone }: { draft: WorkOrderDraft; onDone: (crea
         <p className="flex items-center gap-2 rounded-md border bg-muted px-3 py-2 text-xs text-text-secondary">
           <Link2 aria-hidden className="size-4 shrink-0 text-muted-foreground" />
           <span>
-            Created from alert <span className="font-semibold text-foreground">{draft.alertId}</span>
-            {draft.alertTitle ? `: ${draft.alertTitle}` : ""}. The alert will be linked and acknowledged.
+            {w.fromAlertPrefix} <span className="font-semibold text-foreground">{draft.alertId}</span>
+            {draft.alertTitle ? `: ${draft.alertTitle}` : ""} · {w.fromAlertSuffix}
           </span>
         </p>
       ) : null}
 
-      <Field id={ids.title} label="Title" required error={errors.title}>
+      <Field id={ids.title} label={w.fieldTitle} required error={errors.title}>
         <Input id={ids.title} value={title} onChange={(e) => setTitle(e.target.value)} aria-invalid={!!errors.title} aria-describedby={errors.title ? `${ids.title}-err` : undefined} autoComplete="off" />
       </Field>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field id={ids.asset} label="Asset" required error={errors.assetId}>
+        <Field id={ids.asset} label={w.asset} required error={errors.assetId}>
           <Select value={assetId} onValueChange={setAssetId}>
             <SelectTrigger id={ids.asset} className="h-9 w-full" aria-invalid={!!errors.assetId} aria-describedby={errors.assetId ? `${ids.asset}-err` : undefined}>
-              <SelectValue placeholder="Select an asset" />
+              <SelectValue placeholder={w.selectAsset} />
             </SelectTrigger>
             <SelectContent className="max-h-72">
               {api.sites().map((site) => (
@@ -209,48 +213,50 @@ function WorkOrderForm({ draft, onDone }: { draft: WorkOrderDraft; onDone: (crea
           </Select>
         </Field>
 
-        <Field id={ids.due} label="Due date" required error={errors.dueDate}>
+        <Field id={ids.due} label={w.dueDate} required error={errors.dueDate}>
           <Input id={ids.due} type="date" min={today} value={dueDate} onChange={(e) => setDueDate(e.target.value)} aria-invalid={!!errors.dueDate} aria-describedby={errors.dueDate ? `${ids.due}-err` : undefined} className="h-9" />
         </Field>
 
-        <Field id={ids.priority} label="Priority">
+        <Field id={ids.priority} label={w.priority}>
           <Select value={priority} onValueChange={(v) => setPriority(v as Priority)}>
             <SelectTrigger id={ids.priority} className="h-9 w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="P1">P1 – Urgent (within 24 h)</SelectItem>
-              <SelectItem value="P2">P2 – High (this week)</SelectItem>
-              <SelectItem value="P3">P3 – Normal</SelectItem>
-              <SelectItem value="P4">P4 – Low / next shutdown</SelectItem>
+              {(["P1", "P2", "P3", "P4"] as const).map((p) => (
+                <SelectItem key={p} value={p}>
+                  {m.status.priorityLong[p]}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </Field>
 
-        <Field id={ids.type} label="Maintenance type">
+        <Field id={ids.type} label={w.type}>
           <Select value={type} onValueChange={(v) => setType(v as MaintenanceType)}>
             <SelectTrigger id={ids.type} className="h-9 w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="predictive">Predictive</SelectItem>
-              <SelectItem value="corrective">Corrective</SelectItem>
-              <SelectItem value="preventive">Preventive</SelectItem>
-              <SelectItem value="inspection">Inspection</SelectItem>
+              {(["predictive", "corrective", "preventive", "inspection"] as const).map((t) => (
+                <SelectItem key={t} value={t}>
+                  {m.status.maintenanceType[t]}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </Field>
 
-        <Field id={ids.assignee} label="Assignee" className="sm:col-span-2">
+        <Field id={ids.assignee} label={w.assignee} className="sm:col-span-2">
           <Select value={assigneeId} onValueChange={setAssigneeId}>
             <SelectTrigger id={ids.assignee} className="h-9 w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="none">Unassigned</SelectItem>
+              <SelectItem value="none">{m.common.unassigned}</SelectItem>
               {users.map((u) => (
                 <SelectItem key={u.id} value={u.id}>
-                  {u.name} · {u.role}
+                  {u.name} · {m.roles[u.role]}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -258,13 +264,13 @@ function WorkOrderForm({ draft, onDone }: { draft: WorkOrderDraft; onDone: (crea
         </Field>
       </div>
 
-      <Field id={ids.desc} label="Description and instructions">
+      <Field id={ids.desc} label={w.description}>
         <Textarea id={ids.desc} value={description} onChange={(e) => setDescription(e.target.value)} rows={4} />
       </Field>
 
       <fieldset className="grid gap-2" aria-describedby={errors.parts ? `${uid}-parts-err` : undefined}>
-        <legend className="mb-1 text-sm font-medium">Parts required</legend>
-        {parts.length === 0 ? <p className="text-xs text-muted-foreground">No parts added.</p> : null}
+        <legend className="mb-1 text-sm font-medium">{w.parts}</legend>
+        {parts.length === 0 ? <p className="text-xs text-muted-foreground">{w.noParts}</p> : null}
         <ul className="grid gap-2">
           {parts.map((line, i) => {
             const part = catalog.find((p) => p.partNo === line.partNo);
@@ -273,14 +279,14 @@ function WorkOrderForm({ draft, onDone }: { draft: WorkOrderDraft; onDone: (crea
               <li key={i} className="grid grid-cols-[minmax(0,1fr)_5rem_auto] items-start gap-2">
                 <div className="grid gap-1">
                   <Label htmlFor={`${uid}-part-${i}`} className="sr-only">
-                    Part {i + 1}
+                    {w.partN(i + 1)}
                   </Label>
                   <Select
                     value={line.partNo}
                     onValueChange={(v) => setParts((ps) => ps.map((p, j) => (j === i ? { ...p, partNo: v } : p)))}
                   >
                     <SelectTrigger id={`${uid}-part-${i}`} className="h-9 w-full">
-                      <SelectValue placeholder="Select a part" />
+                      <SelectValue placeholder={w.selectPart} />
                     </SelectTrigger>
                     <SelectContent className="max-h-72">
                       {catalog.map((p) => (
@@ -293,13 +299,13 @@ function WorkOrderForm({ draft, onDone }: { draft: WorkOrderDraft; onDone: (crea
                   {part ? (
                     <span className={cn("flex items-center gap-1 text-xs", short ? "text-warning-fg" : "text-muted-foreground")}>
                       {short ? <TriangleAlert aria-hidden className="size-3.5 text-warning" /> : <CircleCheck aria-hidden className="size-3.5 text-healthy" />}
-                      {short ? `Only ${part.inStock} in stock · lead time ${part.leadTimeDays} d` : `${part.inStock} in stock`}
+                      {short ? w.onlyInStock(part.inStock, part.leadTimeDays) : w.inStock(part.inStock)}
                     </span>
                   ) : null}
                 </div>
                 <div>
                   <Label htmlFor={`${uid}-qty-${i}`} className="sr-only">
-                    Quantity for part {i + 1}
+                    {w.qtyFor(i + 1)}
                   </Label>
                   <Input
                     id={`${uid}-qty-${i}`}
@@ -311,7 +317,7 @@ function WorkOrderForm({ draft, onDone }: { draft: WorkOrderDraft; onDone: (crea
                     className="h-9"
                   />
                 </div>
-                <Button type="button" variant="ghost" size="icon" className="size-9" aria-label={`Remove part ${i + 1}`} onClick={() => setParts((ps) => ps.filter((_, j) => j !== i))}>
+                <Button type="button" variant="ghost" size="icon" className="size-9" aria-label={w.removePart(i + 1)} onClick={() => setParts((ps) => ps.filter((_, j) => j !== i))}>
                   <Trash2 aria-hidden />
                 </Button>
               </li>
@@ -326,17 +332,17 @@ function WorkOrderForm({ draft, onDone }: { draft: WorkOrderDraft; onDone: (crea
         <div>
           <Button type="button" variant="outline" size="sm" onClick={() => setParts((ps) => [...ps, { partNo: "", qty: 1 }])}>
             <Plus aria-hidden />
-            Add part
+            {w.addPart}
           </Button>
         </div>
       </fieldset>
 
       <DialogFooter>
         <Button type="button" variant="outline" size="lg" onClick={() => onDone(false)}>
-          Cancel
+          {m.common.cancel}
         </Button>
         <Button type="submit" size="lg" disabled={saving}>
-          {saving ? "Creating…" : "Create work order"}
+          {saving ? w.submitting : w.submit}
         </Button>
       </DialogFooter>
     </form>
@@ -344,6 +350,7 @@ function WorkOrderForm({ draft, onDone }: { draft: WorkOrderDraft; onDone: (crea
 }
 
 function Field({ id, label, required, error, className, children }: { id: string; label: string; required?: boolean; error?: string; className?: string; children: React.ReactNode }) {
+  const { m } = useI18n();
   return (
     <div className={cn("grid gap-1.5", className)}>
       <Label htmlFor={id}>
@@ -353,7 +360,7 @@ function Field({ id, label, required, error, className, children }: { id: string
             *
           </span>
         ) : null}
-        {required ? <span className="sr-only"> (required)</span> : null}
+        {required ? <span className="sr-only">{m.common.required}</span> : null}
       </Label>
       {children}
       {error ? (

@@ -1,3 +1,5 @@
+"use client";
+
 // Status never relies on color alone: every chip pairs an icon with a text label.
 
 import {
@@ -14,6 +16,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n/provider";
 import type { AlertStatus, AssetStatus, Priority, Severity, WorkOrderStatus } from "@/lib/types";
 
 type Tone = "critical" | "warning" | "healthy" | "offline" | "info" | "neutral";
@@ -71,61 +74,61 @@ export function Chip({ tone, icon: Icon, label, size = "md", className, srPrefix
   );
 }
 
-export const ASSET_STATUS: Record<AssetStatus, { label: string; icon: LucideIcon; tone: Tone }> = {
-  critical: { label: "Critical", icon: OctagonAlert, tone: "critical" },
-  warning: { label: "Warning", icon: TriangleAlert, tone: "warning" },
-  healthy: { label: "Healthy", icon: CircleCheck, tone: "healthy" },
-  offline: { label: "Offline", icon: WifiOff, tone: "offline" },
+export const ASSET_STATUS: Record<AssetStatus, { icon: LucideIcon; tone: Tone }> = {
+  critical: { icon: OctagonAlert, tone: "critical" },
+  warning: { icon: TriangleAlert, tone: "warning" },
+  healthy: { icon: CircleCheck, tone: "healthy" },
+  offline: { icon: WifiOff, tone: "offline" },
 };
 
 export function StatusChip({ status, size, className }: { status: AssetStatus; size?: "sm" | "md"; className?: string }) {
+  const { m } = useI18n();
   const s = ASSET_STATUS[status];
-  return <Chip tone={s.tone} icon={s.icon} label={s.label} size={size} className={className} srPrefix="Status:" />;
+  return <Chip tone={s.tone} icon={s.icon} label={m.status.asset[status]} size={size} className={className} srPrefix={m.status.sr.status} />;
 }
 
-export const SEVERITY: Record<Severity, { label: string; icon: LucideIcon; tone: Tone }> = {
-  critical: { label: "Critical", icon: OctagonAlert, tone: "critical" },
-  warning: { label: "Warning", icon: TriangleAlert, tone: "warning" },
-  info: { label: "Info", icon: Info, tone: "info" },
+export const SEVERITY: Record<Severity, { icon: LucideIcon; tone: Tone }> = {
+  critical: { icon: OctagonAlert, tone: "critical" },
+  warning: { icon: TriangleAlert, tone: "warning" },
+  info: { icon: Info, tone: "info" },
 };
 
 export function SeverityChip({ severity, size, className }: { severity: Severity; size?: "sm" | "md"; className?: string }) {
+  const { m } = useI18n();
   const s = SEVERITY[severity];
-  return <Chip tone={s.tone} icon={s.icon} label={s.label} size={size} className={className} srPrefix="Severity:" />;
+  return <Chip tone={s.tone} icon={s.icon} label={m.status.severity[severity]} size={size} className={className} srPrefix={m.status.sr.severity} />;
 }
 
-export const ALERT_STATUS: Record<AlertStatus, { label: string; icon: LucideIcon; tone: Tone }> = {
-  open: { label: "Open", icon: CircleDot, tone: "neutral" },
-  acknowledged: { label: "Acknowledged", icon: CircleCheck, tone: "neutral" },
-  snoozed: { label: "Snoozed", icon: PauseCircle, tone: "neutral" },
-  resolved: { label: "Resolved", icon: CircleCheck, tone: "healthy" },
+export const ALERT_STATUS: Record<AlertStatus, { icon: LucideIcon; tone: Tone }> = {
+  open: { icon: CircleDot, tone: "neutral" },
+  acknowledged: { icon: CircleCheck, tone: "neutral" },
+  snoozed: { icon: PauseCircle, tone: "neutral" },
+  resolved: { icon: CircleCheck, tone: "healthy" },
 };
 
 export function AlertStatusChip({ status, size = "sm" }: { status: AlertStatus; size?: "sm" | "md" }) {
+  const { m } = useI18n();
   const s = ALERT_STATUS[status];
-  return <Chip tone={s.tone} icon={s.icon} label={s.label} size={size} srPrefix="Alert status:" />;
+  return <Chip tone={s.tone} icon={s.icon} label={m.status.alert[status]} size={size} srPrefix={m.status.sr.alertStatus} />;
 }
 
-export const WO_STATUS: Record<WorkOrderStatus, { label: string; icon: LucideIcon; tone: Tone }> = {
-  open: { label: "Open", icon: CircleDashed, tone: "neutral" },
-  in_progress: { label: "In progress", icon: Loader, tone: "info" },
-  done: { label: "Done", icon: CircleCheck, tone: "healthy" },
+export const WO_STATUS: Record<WorkOrderStatus, { icon: LucideIcon; tone: Tone }> = {
+  open: { icon: CircleDashed, tone: "neutral" },
+  in_progress: { icon: Loader, tone: "info" },
+  done: { icon: CircleCheck, tone: "healthy" },
 };
 
 export function WorkOrderStatusChip({ status, size = "sm" }: { status: WorkOrderStatus; size?: "sm" | "md" }) {
+  const { m } = useI18n();
   const s = WO_STATUS[status];
-  return <Chip tone={s.tone} icon={s.icon} label={s.label} size={size} srPrefix="Work order status:" />;
+  return <Chip tone={s.tone} icon={s.icon} label={m.status.workOrder[status]} size={size} srPrefix={m.status.sr.woStatus} />;
 }
 
-const PRIORITY: Record<Priority, { label: string; tone: Tone }> = {
-  P1: { label: "P1 Urgent", tone: "critical" },
-  P2: { label: "P2 High", tone: "warning" },
-  P3: { label: "P3 Normal", tone: "neutral" },
-  P4: { label: "P4 Low", tone: "neutral" },
-};
+const PRIORITY_TONE: Record<Priority, Tone> = { P1: "critical", P2: "warning", P3: "neutral", P4: "neutral" };
 
 export function PriorityChip({ priority, size = "sm" }: { priority: Priority; size?: "sm" | "md" }) {
-  const p = PRIORITY[priority];
+  const { m } = useI18n();
+  const p = { label: m.status.priority[priority], tone: PRIORITY_TONE[priority] };
   return (
     <span
       className={cn(
@@ -134,7 +137,7 @@ export function PriorityChip({ priority, size = "sm" }: { priority: Priority; si
         TONE_CLASS[p.tone],
       )}
     >
-      <span className="sr-only">Priority: </span>
+      <span className="sr-only">{m.status.sr.priority} </span>
       {p.label}
     </span>
   );
@@ -142,6 +145,7 @@ export function PriorityChip({ priority, size = "sm" }: { priority: Priority; si
 
 /** Model confidence, always shown next to a prediction. Below the alerting floor it says so. */
 export function ConfidenceBadge({ value, minimum = 0.6, className }: { value: number; minimum?: number; className?: string }) {
+  const { m } = useI18n();
   const low = value < minimum;
   return (
     <span
@@ -152,7 +156,7 @@ export function ConfidenceBadge({ value, minimum = 0.6, className }: { value: nu
       )}
     >
       {low ? <TriangleAlert aria-hidden className="size-3" /> : <CircleDot aria-hidden className="size-3" />}
-      {Math.round(value * 100)}% confidence{low ? " (low)" : ""}
+      {m.status.confidence(Math.round(value * 100), low)}
     </span>
   );
 }

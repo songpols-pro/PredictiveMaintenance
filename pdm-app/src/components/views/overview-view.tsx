@@ -6,8 +6,8 @@ import { BellOff, CalendarClock, ChevronDown, ChevronUp, ClipboardList, PartyPop
 import { Button } from "@/components/ui/button";
 import { useSite } from "@/components/providers";
 import { api, type AssetRow, type OverviewData } from "@/lib/api";
-import { formatNumber, formatRelative, dueLabel, formatRulRange, formatDays } from "@/lib/format";
 import { useNow, useQuery } from "@/lib/use-query";
+import { useI18n } from "@/lib/i18n/provider";
 import { PageHeader, SectionHeading } from "@/components/pdm/page-header";
 import { DataFreshness, ModelMeta } from "@/components/pdm/freshness";
 import { KpiCard, type KpiDelta } from "@/components/pdm/kpi-card";
@@ -18,7 +18,11 @@ import { AlertItem } from "@/components/pdm/alert-item";
 import { CreateWorkOrderDialog, draftFromAsset, type WorkOrderDraft } from "@/components/pdm/create-work-order-dialog";
 import { cn } from "@/lib/utils";
 
-function delta(value: number, previous: number, opts: { higherIsBetter: boolean; unit?: string; digits?: number; percent?: boolean }): KpiDelta {
+function delta(
+  value: number,
+  previous: number,
+  opts: { higherIsBetter: boolean; unit?: string; digits?: number; percent?: boolean; noChange: string; comparison: string },
+): KpiDelta {
   const diff = value - previous;
   const digits = opts.digits ?? 0;
   const flat = Math.abs(diff) < 10 ** -digits / 2;
@@ -26,58 +30,60 @@ function delta(value: number, previous: number, opts: { higherIsBetter: boolean;
     ? `${diff >= 0 ? "+" : "−"}${Math.abs((diff / previous) * 100).toFixed(0)}%`
     : `${diff >= 0 ? "+" : "−"}${Math.abs(diff).toFixed(digits)}${opts.unit ?? ""}`;
   return {
-    text: flat ? "No change" : text,
+    text: flat ? opts.noChange : text,
     direction: flat ? "flat" : diff > 0 ? "up" : "down",
     sentiment: flat ? "neutral" : diff > 0 === opts.higherIsBetter ? "good" : "bad",
-    comparison: "vs prev. 30 d",
+    comparison: opts.comparison,
   };
 }
 
 export function OverviewView() {
+  const { m } = useI18n();
+  const o = m.overview;
   const { siteId } = useSite();
   const { data, error, loading, retry } = useQuery(`overview:${siteId}`, () => api.getOverview(siteId));
   const [draft, setDraft] = useState<WorkOrderDraft | null>(null);
   const now = useNow();
-  const scope = siteId ? api.sites().find((s) => s.id === siteId)?.name : "All sites";
+  const scope = siteId ? api.sites().find((s) => s.id === siteId)?.name : m.common.allSites;
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
       <PageHeader
-        title="Fleet overview"
-        description={`Which assets need attention now, why, and what to do · ${scope}`}
+        title={o.title}
+        description={o.description(scope ?? "")}
         meta={
           data ? (
             <>
               <DataFreshness at={data.dataUpdatedAt} />
               <ModelMeta version={data.modelVersion} scoredAt={data.scoredAt} />
-              <span className="text-xs text-muted-foreground">{data.assetCount} monitored assets</span>
+              <span className="text-xs text-muted-foreground">{o.monitored(data.assetCount)}</span>
             </>
           ) : null
         }
       />
 
       {error ? (
-        <ErrorState title="Couldn’t load the fleet overview" error={error} onRetry={retry} />
+        <ErrorState title={o.errorTitle} error={error} onRetry={retry} />
       ) : loading || !data ? (
         <OverviewSkeleton />
       ) : (
         <>
           <KpiRow data={data} />
           <div className="grid gap-6 xl:grid-cols-3">
-            <AttentionList assets={data.attention} now={now} onCreateWorkOrder={(a) => setDraft({ ...draftFromAsset(a, a.primaryAlert), returnFocusId: `att-link-${a.id}` })} />
+            <AttentionList assets={data.attention} now={now} onCreateWorkOrder={(a) => setDraft({ ...draftFromAsset(a, a.primaryAlert, m), returnFocusId: `att-link-${a.id}` })} />
             <section aria-labelledby="recent-alerts" className="flex min-w-0 flex-col gap-3 rounded-lg border bg-card p-4">
               <SectionHeading
                 id="recent-alerts"
-                title="Recent alerts"
-                description="Open, acknowledged and snoozed"
+                title={o.recentAlerts}
+                description={o.recentAlertsDesc}
                 actions={
-                  <Link href="/alerts" className="text-xs font-medium text-link underline underline-offset-2 hover:decoration-2">
-                    View all alerts
+                  <Link href="/app/alerts" className="text-xs font-medium text-link underline underline-offset-2 hover:decoration-2">
+                    {o.viewAllAlerts}
                   </Link>
                 }
               />
               {data.recentAlerts.length === 0 ? (
-                <EmptyState compact icon={BellOff} title="No active alerts" description="New alerts appear here as soon as a threshold or prediction rule fires." />
+                <EmptyState compact icon={BellOff} title={o.noAlertsTitle} description={o.noAlertsDesc} />
               ) : (
                 <ul className="divide-y">
                   {data.recentAlerts.map((a) => (
@@ -96,15 +102,16 @@ export function OverviewView() {
         </>
       )}
 
-      <CreateWorkOrderDialog open={!!draft} onOpenChange={(o) => !o && setDraft(null)} draft={draft} />
+      <CreateWorkOrderDialog open={!!draft} onOpenChange={(open) => !open && setDraft(null)} draft={draft} />
     </div>
   );
 }
 
 function OverviewSkeleton() {
+  const { m } = useI18n();
   return (
     <div className="flex flex-col gap-6" aria-busy="true">
-      <LoadingBlock label="Loading fleet overview…" lines={1} className="w-48" />
+      <LoadingBlock label={m.overview.loading} lines={1} className="w-48" />
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         {Array.from({ length: 6 }).map((_, i) => (
           <SkeletonCard key={i} />
@@ -119,74 +126,73 @@ function OverviewSkeleton() {
 }
 
 function KpiRow({ data }: { data: OverviewData }) {
+  const { m, f } = useI18n();
+  const o = m.overview;
   const atRisk = data.atRisk.critical + data.atRisk.warning;
   const atRiskDiff = atRisk - data.atRisk.previous;
+  const vs30 = { noChange: m.kpi.noChange, comparison: o.vsPrev30 };
   return (
     <section aria-labelledby="kpis-heading">
       <h2 id="kpis-heading" className="sr-only">
-        Fleet health indicators
+        {o.kpisHeading}
       </h2>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <KpiCard
-          label="Assets at risk"
+          label={o.atRisk}
           value={String(atRisk)}
           emphasis={data.atRisk.critical > 0 ? "critical" : atRisk > 0 ? "warning" : undefined}
           delta={{
-            text: atRiskDiff === 0 ? "No change" : `${atRiskDiff > 0 ? "+" : "−"}${Math.abs(atRiskDiff)}`,
+            text: atRiskDiff === 0 ? m.kpi.noChange : `${atRiskDiff > 0 ? "+" : "−"}${Math.abs(atRiskDiff)}`,
             direction: atRiskDiff > 0 ? "up" : atRiskDiff < 0 ? "down" : "flat",
             sentiment: atRiskDiff > 0 ? "bad" : atRiskDiff < 0 ? "good" : "neutral",
-            comparison: "vs 7 d ago",
+            comparison: o.vs7d,
           }}
-          href="/assets?status=critical,warning"
-          hrefLabel="View at-risk assets"
+          href="/app/assets?status=critical,warning"
+          hrefLabel={o.atRiskLink}
         >
           <p className="flex flex-wrap gap-x-2 text-xs">
-            <span className="font-medium text-critical-fg">{data.atRisk.critical} critical</span>
-            <span className="font-medium text-warning-fg">{data.atRisk.warning} warning</span>
+            <span className="font-medium text-critical-fg">{o.criticalCount(data.atRisk.critical)}</span>
+            <span className="font-medium text-warning-fg">{o.warningCount(data.atRisk.warning)}</span>
           </p>
         </KpiCard>
-        <KpiCard
-          label="Predicted failures"
-          value={String(data.predicted7d.length)}
-          unit="in 7 d"
-          emphasis={data.predicted7d.length > 0 ? "critical" : undefined}
-          href="/assets?sort=rul"
-          hrefLabel="View by RUL"
-        >
+        <KpiCard label={o.predicted} value={String(data.predicted7d.length)} unit={o.in7d} emphasis={data.predicted7d.length > 0 ? "critical" : undefined} href="/app/assets?sort=rul" hrefLabel={o.viewByRul}>
           <p className="text-xs text-text-secondary">
-            <span className="font-semibold text-foreground">{data.predicted30d.length}</span> in 30 d · median RUL
+            <span className="font-semibold text-foreground">{data.predicted30d.length}</span> {o.in30dSuffix}
           </p>
         </KpiCard>
-        <KpiCard label="MTBF" value={formatNumber(data.mtbf.value)} unit="h" delta={delta(data.mtbf.value, data.mtbf.previous, { higherIsBetter: true, percent: true })} />
-        <KpiCard label="MTTR" value={data.mttr.value.toFixed(1)} unit="h" delta={delta(data.mttr.value, data.mttr.previous, { higherIsBetter: false, unit: " h", digits: 1 })} />
-        <KpiCard label="OEE" value={(data.oee.value * 100).toFixed(1)} unit="%" delta={delta(data.oee.value * 100, data.oee.previous * 100, { higherIsBetter: true, unit: " pts", digits: 1 })} />
-        <KpiCard label="Unplanned downtime" value={data.downtime.value.toFixed(0)} unit="h / 30 d" delta={delta(data.downtime.value, data.downtime.previous, { higherIsBetter: false, unit: " h", digits: 0 })} />
+        <KpiCard label="MTBF" value={f.number(data.mtbf.value)} unit={o.hoursUnit} delta={delta(data.mtbf.value, data.mtbf.previous, { higherIsBetter: true, percent: true, ...vs30 })} />
+        <KpiCard label="MTTR" value={data.mttr.value.toFixed(1)} unit={o.hoursUnit} delta={delta(data.mttr.value, data.mttr.previous, { higherIsBetter: false, unit: o.hoursDelta, digits: 1, ...vs30 })} />
+        <KpiCard label="OEE" value={(data.oee.value * 100).toFixed(1)} unit="%" delta={delta(data.oee.value * 100, data.oee.previous * 100, { higherIsBetter: true, unit: o.pointsDelta, digits: 1, ...vs30 })} />
+        <KpiCard
+          label={o.downtime}
+          value={data.downtime.value.toFixed(0)}
+          unit={o.downtimeUnit}
+          delta={delta(data.downtime.value, data.downtime.previous, { higherIsBetter: false, unit: o.hoursDelta, digits: 0, ...vs30 })}
+        />
       </div>
     </section>
   );
 }
 
 function AttentionList({ assets, now, onCreateWorkOrder }: { assets: AssetRow[]; now: number; onCreateWorkOrder: (a: AssetRow) => void }) {
+  const { m } = useI18n();
+  const o = m.overview;
   const [expanded, setExpanded] = useState(false);
   const visible = expanded ? assets : assets.slice(0, 5);
   return (
     <section aria-labelledby="attention-heading" className="flex min-w-0 flex-col gap-3 rounded-lg border bg-card p-4 xl:col-span-2">
       <SectionHeading
         id="attention-heading"
-        title="Needs attention now"
-        description="Ranked by severity, then remaining useful life (RUL)"
+        title={o.attention}
+        description={o.attentionDesc}
         actions={
-          <Link href="/assets?status=critical,warning,offline" className="text-xs font-medium text-link underline underline-offset-2 hover:decoration-2">
-            Open in asset list
+          <Link href="/app/assets?status=critical,warning,offline" className="text-xs font-medium text-link underline underline-offset-2 hover:decoration-2">
+            {o.openInList}
           </Link>
         }
       />
       {assets.length === 0 ? (
-        <EmptyState
-          icon={PartyPopper}
-          title="No assets need attention"
-          description="Every monitored asset is healthy and reporting. Predictions refresh every hour."
-        />
+        <EmptyState icon={PartyPopper} title={o.attentionEmptyTitle} description={o.attentionEmptyDesc} />
       ) : (
         <>
           <ol className="flex flex-col gap-2">
@@ -199,7 +205,7 @@ function AttentionList({ assets, now, onCreateWorkOrder }: { assets: AssetRow[];
           {assets.length > 5 ? (
             <Button variant="ghost" className="self-start" aria-expanded={expanded} onClick={() => setExpanded((v) => !v)}>
               {expanded ? <ChevronUp aria-hidden /> : <ChevronDown aria-hidden />}
-              {expanded ? "Show fewer" : `Show all ${assets.length}`}
+              {expanded ? o.showFewer : o.showAll(assets.length)}
             </Button>
           ) : null}
         </>
@@ -209,6 +215,8 @@ function AttentionList({ assets, now, onCreateWorkOrder }: { assets: AssetRow[];
 }
 
 function AttentionItem({ asset, rank, now, onCreateWorkOrder }: { asset: AssetRow; rank: number; now: number; onCreateWorkOrder: () => void }) {
+  const { m, f } = useI18n();
+  const o = m.overview;
   const p = asset.prediction;
   const offline = asset.status === "offline";
   const wo = asset.openWorkOrderId;
@@ -228,12 +236,12 @@ function AttentionItem({ asset, rank, now, onCreateWorkOrder }: { asset: AssetRo
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold text-muted-foreground tabular">
             <span aria-hidden>#{rank}</span>
-            <span className="sr-only">Rank {rank}</span>
+            <span className="sr-only">{o.rank(rank)}</span>
           </span>
           <StatusChip status={asset.status} size="sm" />
         </div>
         <h3 id={`att-${asset.id}`} className="truncate font-semibold">
-          <Link id={`att-link-${asset.id}`} href={`/assets/${asset.id}`} className="underline-offset-2 hover:underline">
+          <Link id={`att-link-${asset.id}`} href={`/app/assets/${asset.id}`} className="underline-offset-2 hover:underline">
             {asset.name}
           </Link>
         </h3>
@@ -249,28 +257,29 @@ function AttentionItem({ asset, rank, now, onCreateWorkOrder }: { asset: AssetRo
           <>
             <p className="flex items-center gap-1.5 font-medium">
               <WifiOff aria-hidden className="size-4 text-offline" />
-              No data for {formatRelative(asset.lastDataAt, now).replace(" ago", "")}
+              {o.noDataFor(f.duration(now - new Date(asset.lastDataAt).getTime()))}
             </p>
-            <p className="text-xs text-text-secondary">Predictions are paused. Last known health {asset.healthScore}.</p>
+            <p className="text-xs text-text-secondary">{o.pausedLastKnown(asset.healthScore)}</p>
             <p className="text-xs">
-              <span className="font-medium">Do: </span>Check the sensor and the edge gateway.
+              <span className="font-medium">{o.doLabel}</span>
+              {o.doOffline}
             </p>
           </>
         ) : p ? (
           <>
             <p>
-              <span className="sr-only">Predicted failure mode: </span>
+              <span className="sr-only">{o.srFailureMode}</span>
               <span className="font-medium">{p.failureModes[0].mode}</span>{" "}
-              <span className="text-xs text-muted-foreground">({Math.round(p.failureModes[0].probability * 100)}% likely)</span>
+              <span className="text-xs text-muted-foreground">{o.likely(Math.round(p.failureModes[0].probability * 100))}</span>
             </p>
             {factor ? (
               <p className="text-xs text-text-secondary">
-                <span className="font-medium text-foreground">Why: </span>
+                <span className="font-medium text-foreground">{o.whyLabel}</span>
                 {factor.label} {factor.detail}
               </p>
             ) : null}
             <p className="text-xs">
-              <span className="font-medium">Do: </span>
+              <span className="font-medium">{o.doLabel}</span>
               {p.recommendedAction}
             </p>
           </>
@@ -281,35 +290,33 @@ function AttentionItem({ asset, rank, now, onCreateWorkOrder }: { asset: AssetRo
       <div className="flex flex-row flex-wrap items-start justify-between gap-3 md:flex-col md:items-end">
         {p && !offline ? (
           <div className="md:text-right">
-            <p className="text-xs text-muted-foreground">Remaining useful life</p>
-            <p className="text-xl font-semibold">{formatDays(p.rulDays)}</p>
-            <p className="text-xs text-muted-foreground">
-              {formatRulRange(p.rulLow, p.rulHigh)} · {Math.round(p.intervalLevel * 100)}% interval
-            </p>
+            <p className="text-xs text-muted-foreground">{o.rulLabel}</p>
+            <p className="text-xl font-semibold">{f.days(p.rulDays)}</p>
+            <p className="text-xs text-muted-foreground">{o.intervalShort(f.rulRange(p.rulLow, p.rulHigh), Math.round(p.intervalLevel * 100))}</p>
             <ConfidenceBadge value={p.confidence} className="mt-1" />
             <p className="mt-1 text-xs text-muted-foreground">
-              Scored <time dateTime={p.scoredAt}>{formatRelative(p.scoredAt, now)}</time>
+              {o.scored} <time dateTime={p.scoredAt}>{f.relative(p.scoredAt, now)}</time>
             </p>
           </div>
         ) : (
           <div className="md:text-right">
-            <p className="text-xs text-muted-foreground">Remaining useful life</p>
-            <p className="font-semibold text-text-secondary">Paused</p>
+            <p className="text-xs text-muted-foreground">{o.rulLabel}</p>
+            <p className="font-semibold text-text-secondary">{o.paused}</p>
           </div>
         )}
         {wo ? (
           <Button variant="outline" asChild>
-            <Link href={`/work-orders?wo=${wo}`}>
+            <Link href={`/app/work-orders?wo=${wo}`}>
               <ClipboardList aria-hidden />
               {wo}
-              <span className="sr-only"> for {asset.name}</span>
+              <span className="sr-only">{o.forAsset(asset.name)}</span>
             </Link>
           </Button>
         ) : (
           <Button onClick={onCreateWorkOrder}>
             <Plus aria-hidden />
-            Work order
-            <span className="sr-only"> for {asset.name}</span>
+            {o.workOrder}
+            <span className="sr-only">{o.forAsset(asset.name)}</span>
           </Button>
         )}
       </div>
@@ -318,12 +325,14 @@ function AttentionItem({ asset, rank, now, onCreateWorkOrder }: { asset: AssetRo
 }
 
 function SiteHealth({ data }: { data: OverviewData["siteHealth"] }) {
+  const { m } = useI18n();
+  const o = m.overview;
   const keys = ["critical", "warning", "offline", "healthy"] as const;
-  const labels = { critical: "Critical", warning: "Warning", offline: "Offline", healthy: "Healthy" };
+  const labels = m.status.asset;
   return (
     <section aria-labelledby="site-health" className="flex min-w-0 flex-col gap-3 rounded-lg border bg-card p-4">
-      <SectionHeading id="site-health" title="Asset health by site" description="Number of assets in each status" />
-      <ul aria-label="Legend" className="flex flex-wrap gap-x-4 gap-y-1">
+      <SectionHeading id="site-health" title={o.siteHealth} description={o.siteHealthDesc} />
+      <ul aria-label={m.chart.legend} className="flex flex-wrap gap-x-4 gap-y-1">
         {keys.map((k) => (
           <li key={k} className="inline-flex items-center gap-1.5 text-xs text-text-secondary">
             <span aria-hidden className={cn("status-dot size-2.5 rounded-sm", TONE_SOLID[k])} />
@@ -332,11 +341,11 @@ function SiteHealth({ data }: { data: OverviewData["siteHealth"] }) {
         ))}
       </ul>
       <table className="w-full text-sm">
-        <caption className="sr-only">Asset count by status for each site</caption>
+        <caption className="sr-only">{o.siteHealthCaption}</caption>
         <thead className="sr-only">
           <tr>
-            <th scope="col">Site</th>
-            <th scope="col">Distribution</th>
+            <th scope="col">{o.colSite}</th>
+            <th scope="col">{o.colDistribution}</th>
             {keys.map((k) => (
               <th key={k} scope="col">
                 {labels[k]}
@@ -349,12 +358,12 @@ function SiteHealth({ data }: { data: OverviewData["siteHealth"] }) {
             const total = keys.reduce((n, k) => n + s[k], 0);
             return (
               <tr key={s.siteId} className="align-middle">
-                <th scope="row" className="w-24 py-2 pr-2 text-left text-sm font-medium sm:w-32 sm:pr-3">
+                <th scope="row" className="py-2 pr-2 text-left text-sm font-medium whitespace-nowrap sm:pr-3">
                   {s.siteName}
-                  <span className="block text-xs font-normal text-muted-foreground">{total} assets</span>
+                  <span className="block text-xs font-normal text-muted-foreground">{o.assetCount(total)}</span>
                 </th>
-                <td className="py-2" aria-hidden>
-                  <div className="flex h-5 w-full gap-0.5 overflow-hidden rounded">
+                <td className="w-full py-2" aria-hidden>
+                  <div className="flex h-5 w-full min-w-16 gap-0.5 overflow-hidden rounded">
                     {keys.map((k) =>
                       s[k] > 0 ? (
                         <span
@@ -383,40 +392,39 @@ function SiteHealth({ data }: { data: OverviewData["siteHealth"] }) {
           })}
         </tbody>
       </table>
-      <p className="text-xs text-muted-foreground">Counts shown as critical / warning / offline / healthy.</p>
+      <p className="text-xs text-muted-foreground">{o.countsNote}</p>
     </section>
   );
 }
 
 function DueWorkOrders({ orders, now }: { orders: OverviewData["dueWorkOrders"]; now: number }) {
+  const { m, f } = useI18n();
+  const o = m.overview;
   return (
     <section aria-labelledby="due-wo" className="flex min-w-0 flex-col gap-3 rounded-lg border bg-card p-4">
       <SectionHeading
         id="due-wo"
-        title="Work orders due in 7 days"
-        description="Open and in progress, earliest first"
+        title={o.dueWos}
+        description={o.dueWosDesc}
         actions={
-          <Link href="/work-orders" className="text-xs font-medium text-link underline underline-offset-2 hover:decoration-2">
-            Open board
+          <Link href="/app/work-orders" className="text-xs font-medium text-link underline underline-offset-2 hover:decoration-2">
+            {o.openBoard}
           </Link>
         }
       />
       {orders.length === 0 ? (
-        <EmptyState compact icon={CalendarClock} title="Nothing due this week" description="Work orders with a due date in the next 7 days show up here." />
+        <EmptyState compact icon={CalendarClock} title={o.dueEmptyTitle} description={o.dueEmptyDesc} />
       ) : (
         <ul className="divide-y">
-          {orders.slice(0, 6).map((w) => {
-            const due = dueLabel(w.dueDate, now);
-            return (
-              <li key={w.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5">
-                <PriorityChip priority={w.priority} />
-                <Link href={`/work-orders?wo=${w.id}`} className="min-w-0 flex-1 truncate text-sm font-medium underline-offset-2 hover:underline">
-                  <span className="text-muted-foreground">{w.id}</span> {w.title}
-                </Link>
-                <DueChip {...due} />
-              </li>
-            );
-          })}
+          {orders.slice(0, 6).map((w) => (
+            <li key={w.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5">
+              <PriorityChip priority={w.priority} />
+              <Link href={`/app/work-orders?wo=${w.id}`} className="min-w-0 flex-1 truncate text-sm font-medium underline-offset-2 hover:underline">
+                <span className="text-muted-foreground">{w.id}</span> {w.title}
+              </Link>
+              <DueChip {...f.due(w.dueDate, now)} />
+            </li>
+          ))}
         </ul>
       )}
     </section>

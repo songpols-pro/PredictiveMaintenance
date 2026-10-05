@@ -2,17 +2,12 @@
 
 import { useMemo } from "react";
 import { CartesianGrid, ComposedChart, Line, ReferenceLine, Scatter, Tooltip, XAxis, YAxis } from "recharts";
-import { format } from "date-fns";
 import type { SensorSeries, TimeRange } from "@/lib/types";
 import { AXIS_TICK, LineSwatch, ThresholdSwatch, TooltipCard, TriangleMarker, TriangleSwatch } from "./chart-tooltip";
 import { ChartFrame, Legend, LegendItem } from "@/components/pdm/chart-frame";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-
-const RANGE_LABEL: Record<TimeRange, string> = { "24h": "last 24 hours", "7d": "last 7 days", "30d": "last 30 days", "90d": "last 90 days" };
-
-function tickFormat(range: TimeRange) {
-  return (t: number) => format(new Date(t), range === "24h" ? "HH:mm" : range === "7d" ? "EEE d" : "MMM d");
-}
+import { useI18n } from "@/lib/i18n/provider";
+import type { Messages } from "@/lib/i18n/messages";
 
 function digitsFor(series: SensorSeries) {
   return series.config.unit === "bar" && series.baseline < 20 ? 2 : 1;
@@ -33,24 +28,28 @@ export function zoneOf(series: SensorSeries, v: number | null): "critical" | "wa
   return v <= critical ? "critical" : v <= warning ? "warning" : "normal";
 }
 
-export function describeSeries(series: SensorSeries, range: TimeRange): string {
+export function describeSeries(series: SensorSeries, range: TimeRange, m: Messages): string {
   const { label, unit, direction, warning, critical } = series.config;
   const d = digitsFor(series);
-  if (series.latest === null) return `${label}: no readings in the ${RANGE_LABEL[range]}.`;
-  const zone = zoneOf(series, series.latest);
-  const cmp = direction === "above" ? "above" : "below";
-  const zoneText =
-    zone === "critical"
-      ? `${cmp} the critical limit (${critical} ${unit})`
-      : zone === "warning"
-        ? `${cmp} the warning limit (${warning} ${unit})`
-        : `within limits (warning ${direction === "above" ? "≥" : "≤"} ${warning} ${unit})`;
-  return `Latest ${series.latest.toFixed(d)} ${unit}, ${zoneText}. 30-day baseline ${series.baseline.toFixed(d)} ${unit}. ${series.anomalyCount} anomal${series.anomalyCount === 1 ? "y" : "ies"} in the ${RANGE_LABEL[range]}.`;
+  if (series.latest === null) return m.chart.noReadings(label, m.chart.ranges[range]);
+  return m.chart.summary({
+    latest: series.latest.toFixed(d),
+    unit,
+    zone: zoneOf(series, series.latest) ?? "normal",
+    above: direction === "above",
+    warning,
+    critical,
+    baseline: series.baseline.toFixed(d),
+    anomalies: series.anomalyCount,
+    range: m.chart.ranges[range],
+  });
 }
 
 export function SensorChart({ series, range, height = 200, actions }: { series: SensorSeries; range: TimeRange; height?: number; actions?: React.ReactNode }) {
+  const { m, f } = useI18n();
   const { config } = series;
   const d = digitsFor(series);
+  const sym = config.direction === "above" ? "≥" : "≤";
   const data = useMemo(() => series.points.map((p) => ({ t: p.t, v: p.v, anomaly: p.anomaly ?? null })), [series.points]);
   // Anomaly markers get their own data set so empty buckets don't render as markers.
   const anomalies = useMemo(() => data.filter((p) => p.anomaly !== null).map((p) => ({ t: p.t, anomaly: p.anomaly })), [data]);
@@ -64,8 +63,10 @@ export function SensorChart({ series, range, height = 200, actions }: { series: 
   }, [data, config]);
 
   const ticks = useMemo(() => evenTicks(data.map((p) => p.t)), [data]);
-  const summary = describeSeries(series, range);
+  const tick = (t: number) => (range === "24h" ? f.time(t) : range === "7d" ? f.weekdayDay(t) : f.shortDate(t));
+  const summary = describeSeries(series, range, m);
   const zone = zoneOf(series, series.latest);
+  const rangeLabel = m.chart.ranges[range];
 
   return (
     <ChartFrame
@@ -73,13 +74,13 @@ export function SensorChart({ series, range, height = 200, actions }: { series: 
       subtitle={
         series.latest !== null ? (
           <span>
-            Latest <span className="font-semibold text-foreground tabular">{series.latest.toFixed(d)} {config.unit}</span>
-            {zone === "critical" ? <span className="ml-1 font-medium text-critical-fg">· {config.direction === "above" ? "above" : "below"} critical limit</span> : null}
-            {zone === "warning" ? <span className="ml-1 font-medium text-warning-fg">· in warning zone</span> : null}
-            {zone === "normal" ? <span className="ml-1">· within limits</span> : null}
+            {m.chart.latest} <span className="font-semibold text-foreground tabular">{series.latest.toFixed(d)} {config.unit}</span>
+            {zone === "critical" ? <span className="ml-1 font-medium text-critical-fg">· {m.chart.aboveCritical(config.direction === "above")}</span> : null}
+            {zone === "warning" ? <span className="ml-1 font-medium text-warning-fg">· {m.chart.inWarning}</span> : null}
+            {zone === "normal" ? <span className="ml-1">· {m.chart.withinLimits}</span> : null}
           </span>
         ) : (
-          "No recent readings"
+          m.chart.noRecent
         )
       }
       summary={summary}
@@ -87,31 +88,36 @@ export function SensorChart({ series, range, height = 200, actions }: { series: 
       legend={
         <Legend>
           <LegendItem swatch={<LineSwatch />} label={config.label} />
-          <LegendItem swatch={<ThresholdSwatch tone="warning" />} label={`Warning ${config.direction === "above" ? "≥" : "≤"} ${config.warning}`} />
-          <LegendItem swatch={<ThresholdSwatch tone="critical" />} label={`Critical ${config.direction === "above" ? "≥" : "≤"} ${config.critical}`} />
-          <LegendItem swatch={<TriangleSwatch />} label="Anomaly" />
+          <LegendItem swatch={<ThresholdSwatch tone="warning" />} label={m.chart.warningLegend(sym, config.warning)} />
+          <LegendItem swatch={<ThresholdSwatch tone="critical" />} label={m.chart.criticalLegend(sym, config.critical)} />
+          <LegendItem swatch={<TriangleSwatch />} label={m.chart.anomaly} />
         </Legend>
       }
       table={
         <Table>
-          <caption className="sr-only">{config.label} readings, {RANGE_LABEL[range]}</caption>
+          <caption className="sr-only">{m.chart.readingsCaption(config.label, rangeLabel)}</caption>
           <TableHeader className="sticky top-0 bg-muted">
             <TableRow>
-              <TableHead scope="col">Time</TableHead>
-              <TableHead scope="col" className="text-right">Value ({config.unit})</TableHead>
-              <TableHead scope="col">Zone</TableHead>
-              <TableHead scope="col">Anomaly</TableHead>
+              <TableHead scope="col">{m.chart.time}</TableHead>
+              <TableHead scope="col" className="text-right">
+                {m.chart.value(config.unit)}
+              </TableHead>
+              <TableHead scope="col">{m.chart.zone}</TableHead>
+              <TableHead scope="col">{m.chart.anomaly}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {[...data].reverse().map((p) => (
-              <TableRow key={p.t}>
-                <TableCell className="tabular">{format(new Date(p.t), "MMM d, HH:mm")}</TableCell>
-                <TableCell className="text-right tabular">{p.v === null ? "No data" : p.v.toFixed(d)}</TableCell>
-                <TableCell>{zoneOf(series, p.v) ?? "—"}</TableCell>
-                <TableCell>{p.anomaly !== null ? `Yes (${p.anomaly.toFixed(d)})` : "No"}</TableCell>
-              </TableRow>
-            ))}
+            {[...data].reverse().map((p) => {
+              const z = zoneOf(series, p.v);
+              return (
+                <TableRow key={p.t}>
+                  <TableCell className="tabular">{f.dateTime(p.t)}</TableCell>
+                  <TableCell className="text-right tabular">{p.v === null ? m.chart.noData : p.v.toFixed(d)}</TableCell>
+                  <TableCell>{z ? m.chart.zones[z] : "—"}</TableCell>
+                  <TableCell>{p.anomaly !== null ? m.chart.yes(p.anomaly.toFixed(d)) : m.chart.no}</TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       }
@@ -121,7 +127,7 @@ export function SensorChart({ series, range, height = 200, actions }: { series: 
         responsive
         style={{ width: "100%", height }}
         margin={{ top: 8, right: 12, bottom: 0, left: 0 }}
-        title={`${config.label} over the ${RANGE_LABEL[range]}`}
+        title={m.chart.svgTitle(config.label, rangeLabel)}
         desc={summary}
       >
         <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
@@ -131,7 +137,7 @@ export function SensorChart({ series, range, height = 200, actions }: { series: 
           scale="time"
           domain={["dataMin", "dataMax"]}
           ticks={ticks}
-          tickFormatter={tickFormat(range)}
+          tickFormatter={tick}
           tick={AXIS_TICK}
           tickLine={false}
           axisLine={{ stroke: "var(--chart-axis)" }}
@@ -143,14 +149,14 @@ export function SensorChart({ series, range, height = 200, actions }: { series: 
           stroke="var(--status-warning)"
           strokeDasharray="5 4"
           strokeWidth={1.5}
-          label={{ value: `Warning ${config.warning}`, position: "insideTopLeft", fill: "var(--status-warning-fg)", fontSize: 11 }}
+          label={{ value: m.chart.warningRef(config.warning), position: "insideTopLeft", fill: "var(--status-warning-fg)", fontSize: 11 }}
         />
         <ReferenceLine
           y={config.critical}
           stroke="var(--status-critical)"
           strokeDasharray="5 4"
           strokeWidth={1.5}
-          label={{ value: `Critical ${config.critical}`, position: "insideTopLeft", fill: "var(--status-critical-fg)", fontSize: 11 }}
+          label={{ value: m.chart.criticalRef(config.critical), position: "insideTopLeft", fill: "var(--status-critical-fg)", fontSize: 11 }}
         />
         <Tooltip
           cursor={{ stroke: "var(--chart-axis)", strokeWidth: 1 }}
@@ -160,11 +166,11 @@ export function SensorChart({ series, range, height = 200, actions }: { series: 
             const z = zoneOf(series, p.v);
             return (
               <TooltipCard
-                title={format(new Date(p.t), range === "24h" || range === "7d" ? "EEE MMM d, HH:mm" : "MMM d, HH:mm")}
+                title={range === "24h" || range === "7d" ? f.weekdayDateTime(p.t) : f.dateTime(p.t)}
                 rows={[
-                  { label: config.label, value: p.v === null ? "No data" : `${p.v.toFixed(d)} ${config.unit}`, swatch: <LineSwatch /> },
-                  { label: "Zone", value: z ? z[0].toUpperCase() + z.slice(1) : "—" },
-                  ...(p.anomaly !== null ? [{ label: "Anomaly", value: `${p.anomaly.toFixed(d)} ${config.unit}`, swatch: <TriangleSwatch /> }] : []),
+                  { label: config.label, value: p.v === null ? m.chart.noData : `${p.v.toFixed(d)} ${config.unit}`, swatch: <LineSwatch /> },
+                  { label: m.chart.zone, value: z ? m.chart.zones[z] : "—" },
+                  ...(p.anomaly !== null && p.anomaly !== undefined ? [{ label: m.chart.anomaly, value: `${p.anomaly.toFixed(d)} ${config.unit}`, swatch: <TriangleSwatch /> }] : []),
                 ]}
               />
             );
@@ -181,7 +187,15 @@ export function SensorChart({ series, range, height = 200, actions }: { series: 
           isAnimationActive={false}
           name={config.label}
         />
-        {anomalies.length > 0 ? <Scatter data={anomalies} dataKey="anomaly" isAnimationActive={false} shape={(props: { cx?: number; cy?: number }) => <TriangleMarker cx={props.cx} cy={props.cy} />} name="Anomaly" /> : null}
+        {anomalies.length > 0 ? (
+          <Scatter
+            data={anomalies}
+            dataKey="anomaly"
+            isAnimationActive={false}
+            shape={(props: { cx?: number; cy?: number }) => <TriangleMarker cx={props.cx} cy={props.cy} />}
+            name={m.chart.anomaly}
+          />
+        ) : null}
       </ComposedChart>
     </ChartFrame>
   );

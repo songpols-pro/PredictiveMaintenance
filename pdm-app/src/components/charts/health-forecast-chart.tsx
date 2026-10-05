@@ -2,14 +2,15 @@
 
 import { useMemo } from "react";
 import { Area, CartesianGrid, ComposedChart, Line, ReferenceArea, ReferenceLine, Tooltip, XAxis, YAxis } from "recharts";
-import { format } from "date-fns";
 import type { HealthPoint, Prediction, PredictionSettings } from "@/lib/types";
 import { AXIS_TICK, BandSwatch, LineSwatch, ThresholdSwatch, TooltipCard } from "./chart-tooltip";
 import { ChartFrame, Legend, LegendItem } from "@/components/pdm/chart-frame";
 import { evenTicks } from "./sensor-chart";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useI18n } from "@/lib/i18n/provider";
 
 const DAY = 86_400_000;
+const FAILURE_LEVEL = 20;
 
 function WindowSwatch() {
   return (
@@ -18,7 +19,6 @@ function WindowSwatch() {
     </svg>
   );
 }
-const FAILURE_LEVEL = 20;
 
 export function HealthForecastChart({
   points,
@@ -33,6 +33,8 @@ export function HealthForecastChart({
   now: number;
   stale: boolean;
 }) {
+  const { m, f } = useI18n();
+  const h = m.healthChart;
   const data = useMemo(
     () =>
       points.map((p) => ({
@@ -51,54 +53,60 @@ export function HealthForecastChart({
   const first = data.find((p) => p.score !== null)?.score ?? null;
   const summary =
     current === null
-      ? "No health history yet."
-      : `Health score ${current} today${first !== null ? `, from ${Math.round(first)} 90 days ago` : ""}. ` +
+      ? h.noHistory
+      : h.scoreToday(current, first !== null ? Math.round(first) : null) +
         (prediction && !stale
           ? showsFailure
-            ? `Forecast reaches the failure threshold (${FAILURE_LEVEL}) in about ${prediction.rulDays} days, between ${format(failStart, "MMM d")} and ${format(failEnd, "MMM d")} (${Math.round(prediction.intervalLevel * 100)}% interval, ${Math.round(prediction.confidence * 100)}% model confidence).`
-            : `No failure expected in the 30-day forecast window.`
+            ? h.reaches(prediction.rulDays, f.shortDate(failStart), f.shortDate(failEnd), Math.round(prediction.intervalLevel * 100), Math.round(prediction.confidence * 100))
+            : h.noFailure
           : stale
-            ? "Forecast paused because the asset is not sending data."
+            ? h.paused
             : "");
 
   // Thin the table to one row per day to keep it readable.
   const tableRows = useMemo(() => {
     const byDay = new Map<string, (typeof data)[number]>();
-    for (const p of data) byDay.set(format(p.t, "yyyy-MM-dd"), p);
+    for (const p of data) byDay.set(new Date(p.t).toDateString(), p);
     return [...byDay.values()].reverse();
   }, [data]);
 
   return (
     <ChartFrame
-      title="Health score and RUL forecast"
+      title={h.title}
       headingLevel={2}
-      subtitle="Last 90 days of health score (0–100) with the model’s forecast to the failure threshold"
+      subtitle={h.subtitle}
       summary={summary}
       legend={
         <Legend>
-          <LegendItem swatch={<LineSwatch />} label="Health score" />
-          {prediction && !stale ? <LegendItem swatch={<LineSwatch dashed />} label="Forecast (median)" /> : null}
-          {prediction && !stale ? <LegendItem swatch={<BandSwatch />} label={`${Math.round(prediction.intervalLevel * 100)}% interval`} /> : null}
-          {showsFailure ? <LegendItem swatch={<WindowSwatch />} label="Predicted failure window" /> : null}
-          <LegendItem swatch={<ThresholdSwatch tone="warning" />} label={`Warning < ${settings.healthWarningBelow}`} />
-          <LegendItem swatch={<ThresholdSwatch tone="critical" />} label={`Critical < ${settings.healthCriticalBelow}`} />
+          <LegendItem swatch={<LineSwatch />} label={h.score} />
+          {prediction && !stale ? <LegendItem swatch={<LineSwatch dashed />} label={h.forecast} /> : null}
+          {prediction && !stale ? <LegendItem swatch={<BandSwatch />} label={h.interval(Math.round(prediction.intervalLevel * 100))} /> : null}
+          {showsFailure ? <LegendItem swatch={<WindowSwatch />} label={h.failureWindow} /> : null}
+          <LegendItem swatch={<ThresholdSwatch tone="warning" />} label={h.warning(settings.healthWarningBelow)} />
+          <LegendItem swatch={<ThresholdSwatch tone="critical" />} label={h.critical(settings.healthCriticalBelow)} />
         </Legend>
       }
       table={
         <Table>
-          <caption className="sr-only">Daily health score and forecast</caption>
+          <caption className="sr-only">{h.tableCaption}</caption>
           <TableHeader className="sticky top-0 bg-muted">
             <TableRow>
-              <TableHead scope="col">Date</TableHead>
-              <TableHead scope="col" className="text-right">Health score</TableHead>
-              <TableHead scope="col" className="text-right">Forecast</TableHead>
-              <TableHead scope="col" className="text-right">Interval</TableHead>
+              <TableHead scope="col">{h.date}</TableHead>
+              <TableHead scope="col" className="text-right">
+                {h.score}
+              </TableHead>
+              <TableHead scope="col" className="text-right">
+                {h.forecastShort}
+              </TableHead>
+              <TableHead scope="col" className="text-right">
+                {h.intervalShort}
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {tableRows.map((p) => (
               <TableRow key={p.t}>
-                <TableCell className="tabular">{format(p.t, "MMM d, yyyy")}</TableCell>
+                <TableCell className="tabular">{f.date(p.t)}</TableCell>
                 <TableCell className="text-right tabular">{p.score ?? "—"}</TableCell>
                 <TableCell className="text-right tabular">{p.forecast ?? "—"}</TableCell>
                 <TableCell className="text-right tabular">{p.band ? `${p.band[0]}–${p.band[1]}` : "—"}</TableCell>
@@ -108,31 +116,16 @@ export function HealthForecastChart({
         </Table>
       }
     >
-      <ComposedChart
-        data={data}
-        responsive
-        style={{ width: "100%", height: 260 }}
-        margin={{ top: 16, right: 16, bottom: 0, left: 0 }}
-        title="Health score and remaining useful life forecast"
-        desc={summary}
-      >
+      <ComposedChart data={data} responsive style={{ width: "100%", height: 260 }} margin={{ top: 16, right: 16, bottom: 0, left: 0 }} title={h.svgTitle} desc={summary}>
         <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
-        {showsFailure ? (
-          <ReferenceArea
-            x1={failStart}
-            x2={failEnd}
-            fill="var(--status-critical-bg)"
-            fillOpacity={0.9}
-            stroke="none"
-          />
-        ) : null}
+        {showsFailure ? <ReferenceArea x1={failStart} x2={failEnd} fill="var(--status-critical-bg)" fillOpacity={0.9} stroke="none" /> : null}
         <XAxis
           dataKey="t"
           type="number"
           scale="time"
           domain={["dataMin", "dataMax"]}
           ticks={evenTicks(data.map((p) => p.t), 8)}
-          tickFormatter={(t: number) => format(t, "MMM d")}
+          tickFormatter={(t: number) => f.shortDate(t)}
           tick={AXIS_TICK}
           tickLine={false}
           axisLine={{ stroke: "var(--chart-axis)" }}
@@ -145,14 +138,9 @@ export function HealthForecastChart({
           y={FAILURE_LEVEL}
           stroke="var(--muted-foreground)"
           strokeWidth={1}
-          label={{ value: "Failure threshold", position: "insideBottomLeft", fill: "var(--muted-foreground)", fontSize: 11 }}
+          label={{ value: h.failureThreshold, position: "insideBottomLeft", fill: "var(--muted-foreground)", fontSize: 11 }}
         />
-        <ReferenceLine
-          x={now}
-          stroke="var(--foreground)"
-          strokeOpacity={0.5}
-          label={{ value: "Now", position: "insideTopLeft", fill: "var(--text-secondary)", fontSize: 11 }}
-        />
+        <ReferenceLine x={now} stroke="var(--foreground)" strokeOpacity={0.5} label={{ value: h.now, position: "insideTopLeft", fill: "var(--text-secondary)", fontSize: 11 }} />
         <Tooltip
           cursor={{ stroke: "var(--chart-axis)", strokeWidth: 1 }}
           content={({ active, payload }) => {
@@ -161,11 +149,11 @@ export function HealthForecastChart({
             const future = p.t > now;
             return (
               <TooltipCard
-                title={`${format(p.t, "EEE MMM d, HH:mm")}${future ? " (forecast)" : ""}`}
+                title={`${f.weekdayDateTime(p.t)}${future ? h.forecastSuffix : ""}`}
                 rows={[
-                  ...(p.score !== null ? [{ label: "Health score", value: p.score, swatch: <LineSwatch /> }] : []),
-                  ...(future && p.forecast !== null ? [{ label: "Forecast", value: p.forecast, swatch: <LineSwatch dashed /> }] : []),
-                  ...(future && p.band ? [{ label: "Interval", value: `${p.band[0]}–${p.band[1]}`, swatch: <BandSwatch /> }] : []),
+                  ...(p.score !== null ? [{ label: h.score, value: p.score, swatch: <LineSwatch /> }] : []),
+                  ...(future && p.forecast !== null ? [{ label: h.forecastShort, value: p.forecast, swatch: <LineSwatch dashed /> }] : []),
+                  ...(future && p.band ? [{ label: h.intervalShort, value: `${p.band[0]}–${p.band[1]}`, swatch: <BandSwatch /> }] : []),
                 ]}
               />
             );
@@ -173,15 +161,7 @@ export function HealthForecastChart({
         />
         <Area dataKey="band" stroke="none" fill="var(--chart-band)" isAnimationActive={false} connectNulls={false} activeDot={false} />
         <Line dataKey="forecast" stroke="var(--chart-1)" strokeWidth={2} strokeDasharray="6 4" dot={false} isAnimationActive={false} connectNulls={false} activeDot={false} />
-        <Line
-          dataKey="score"
-          stroke="var(--chart-1)"
-          strokeWidth={2}
-          dot={false}
-          activeDot={{ r: 4, stroke: "var(--card)", strokeWidth: 2 }}
-          isAnimationActive={false}
-          connectNulls={false}
-        />
+        <Line dataKey="score" stroke="var(--chart-1)" strokeWidth={2} dot={false} activeDot={{ r: 4, stroke: "var(--card)", strokeWidth: 2 }} isAnimationActive={false} connectNulls={false} />
       </ComposedChart>
     </ChartFrame>
   );

@@ -4,6 +4,7 @@ import { useId, useState } from "react";
 import { Table2, LineChart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n/provider";
 
 /**
  * Chart container: a <figure> with a heading, a plain-language summary (figcaption),
@@ -30,6 +31,7 @@ export function ChartFrame({
   children: React.ReactNode;
   className?: string;
 }) {
+  const { m } = useI18n();
   const [showTable, setShowTable] = useState(false);
   const captionId = useId();
   const Heading = headingLevel === 2 ? "h2" : "h3";
@@ -52,14 +54,14 @@ export function ChartFrame({
               onClick={() => setShowTable((v) => !v)}
             >
               {showTable ? <LineChart aria-hidden /> : <Table2 aria-hidden />}
-              {showTable ? "View chart" : "View table"}
+              {showTable ? m.chart.viewChart : m.chart.viewTable}
             </Button>
           ) : null}
         </div>
       </div>
       {legend}
       {showTable && table ? (
-        <div tabIndex={0} role="region" aria-label={`${title} data table`} className="relative max-h-72 overflow-auto rounded-md border">
+        <div tabIndex={0} role="region" aria-label={m.chart.dataTable(title)} className="relative max-h-72 overflow-auto rounded-md border">
           {table}
         </div>
       ) : (
@@ -82,8 +84,9 @@ export function LegendItem({ swatch, label }: { swatch: React.ReactNode; label: 
 }
 
 export function Legend({ children }: { children: React.ReactNode }) {
+  const { m } = useI18n();
   return (
-    <ul aria-label="Legend" className="flex flex-wrap gap-x-4 gap-y-1">
+    <ul aria-label={m.chart.legend} className="flex flex-wrap gap-x-4 gap-y-1">
       {children}
     </ul>
   );

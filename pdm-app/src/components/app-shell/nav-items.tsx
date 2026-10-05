@@ -6,21 +6,23 @@ import { useSyncExternalStore } from "react";
 import { Bell, ClipboardList, Factory, LayoutDashboard, Settings, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { db, getSimulation, getVersion, subscribe } from "@/lib/mock/db";
+import { useI18n } from "@/lib/i18n/provider";
+import type { Messages } from "@/lib/i18n/messages";
 
 interface NavItem {
   href: string;
-  label: string;
+  label: keyof Pick<Messages["nav"], "overview" | "assets" | "alerts" | "workOrders" | "settings">;
   icon: LucideIcon;
   match: (path: string) => boolean;
   badge?: "alerts";
 }
 
 export const NAV_ITEMS: NavItem[] = [
-  { href: "/", label: "Overview", icon: LayoutDashboard, match: (p) => p === "/" },
-  { href: "/assets", label: "Assets", icon: Factory, match: (p) => p.startsWith("/assets") },
-  { href: "/alerts", label: "Alerts", icon: Bell, match: (p) => p.startsWith("/alerts"), badge: "alerts" },
-  { href: "/work-orders", label: "Work orders", icon: ClipboardList, match: (p) => p.startsWith("/work-orders") },
-  { href: "/settings", label: "Settings", icon: Settings, match: (p) => p.startsWith("/settings") },
+  { href: "/app", label: "overview", icon: LayoutDashboard, match: (p) => p === "/app" },
+  { href: "/app/assets", label: "assets", icon: Factory, match: (p) => p.startsWith("/app/assets") },
+  { href: "/app/alerts", label: "alerts", icon: Bell, match: (p) => p.startsWith("/app/alerts"), badge: "alerts" },
+  { href: "/app/work-orders", label: "workOrders", icon: ClipboardList, match: (p) => p.startsWith("/app/work-orders") },
+  { href: "/app/settings", label: "settings", icon: Settings, match: (p) => p.startsWith("/app/settings") },
 ];
 
 export function useOpenAlertCount() {
@@ -33,6 +35,7 @@ export function useOpenAlertCount() {
 export function NavList({ variant, onNavigate }: { variant: "full" | "rail"; onNavigate?: () => void }) {
   const pathname = usePathname();
   const openAlerts = useOpenAlertCount();
+  const { m } = useI18n();
   return (
     <ul className={cn("flex flex-col", variant === "full" ? "gap-0.5 px-3" : "items-center gap-1 px-2")}>
       {NAV_ITEMS.map((item) => {
@@ -57,7 +60,7 @@ export function NavList({ variant, onNavigate }: { variant: "full" | "rail"; onN
                 <span aria-hidden className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-primary" />
               ) : null}
               <Icon aria-hidden className="size-[18px] shrink-0" />
-              <span className={variant === "rail" ? "text-center leading-tight" : undefined}>{item.label}</span>
+              <span className={variant === "rail" ? "text-center leading-tight" : undefined}>{m.nav[item.label]}</span>
               {count > 0 ? (
                 <span
                   className={cn(
@@ -66,7 +69,7 @@ export function NavList({ variant, onNavigate }: { variant: "full" | "rail"; onN
                   )}
                 >
                   {count}
-                  <span className="sr-only"> open</span>
+                  <span className="sr-only">{m.nav.openSuffix}</span>
                 </span>
               ) : null}
             </Link>

@@ -1,14 +1,18 @@
 // API facade. Every screen talks to the backend only through these async functions.
 // Today they read the in-memory mock (src/lib/mock); to go live, keep the signatures and
-// swap the bodies for fetch() calls.
+// swap the bodies for fetch() calls. Responses are localized for the current language,
+// the way a real API would honor Accept-Language.
 
 import type {
   Alert,
   Asset,
   HealthPoint,
   MaintenanceEvent,
+  MaintenanceType,
   NotificationRule,
   Part,
+  PartLine,
+  Prediction,
   PredictionSettings,
   Priority,
   SensorKind,
@@ -21,15 +25,15 @@ import type {
   User,
   WorkOrder,
   WorkOrderStatus,
-  MaintenanceType,
-  PartLine,
 } from "@/lib/types";
+import { getCurrentLocale, onLocaleChange } from "@/lib/i18n/current";
 import { ASSETS, MODEL_VERSION, SCORED_AT, buildHealthSeries, getModel } from "@/lib/mock/assets";
-import { CURRENT_USER_ID, PARTS, SITES, SITE_KPIS } from "@/lib/mock/catalog";
-import { buildHistory } from "@/lib/mock/records";
+import { CURRENT_USER_ID, PARTS, SENSOR_LABELS, SITES, SITE_KPIS } from "@/lib/mock/catalog";
+import { buildHistory, type AlertRecord, type EventRecord, type WorkOrderRecord } from "@/lib/mock/records";
 import { buildSensorSeries, sensorWindow } from "@/lib/mock/sensors";
 import { commit, db, getSimulation } from "@/lib/mock/db";
 import { DAY, HOUR, NOW } from "@/lib/mock/random";
+import { alertText, apiErrorMessage, eventText, factorDetail, factorLabel, resolveText, tx, txName, type EventCode } from "@/lib/mock/l10n";
 
 export class ApiError extends Error {
   constructor(message: string, readonly status = 503) {
@@ -38,6 +42,13 @@ export class ApiError extends Error {
   }
 }
 
+// ---- language ---------------------------------------------------------------------------
+
+// Responses follow the user's language; switching language re-fetches every open query.
+onLocaleChange(() => commit());
+
+const sensorLabel = (kind: SensorKind) => tx(SENSOR_LABELS[kind], getCurrentLocale());
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Wraps a read with latency and the demo-state simulation. */
@@ -45,7 +56,7 @@ async function read<T>(produce: () => T, empty: () => T): Promise<T> {
   const mode = getSimulation();
   if (mode === "loading") return new Promise<T>(() => {});
   await sleep(250 + Math.random() * 350);
-  if (mode === "error") throw new ApiError("The PdM service did not respond (HTTP 503). Data shown may be out of date.");
+  if (mode === "error") throw new ApiError(apiErrorMessage(getCurrentLocale()));
   return mode === "empty" ? empty() : produce();
 }
 
@@ -123,10 +134,56 @@ export interface CreateWorkOrderInput {
   parts: PartLine[];
 }
 
+// ---- localization of stored records -----------------------------------------------------
+
+function localizeSite(site: Site): Site {
+  return { ...site, name: tx(site.name, getCurrentLocale()), region: tx(site.region, getCurrentLocale()), lines: site.lines.map((l) => ({ ...l, name: tx(l.name, getCurrentLocale()) })) };
+}
+
+function localizePrediction(p: Prediction | null): Prediction | null {
+  if (!p) return null;
+  return {
+    ...p,
+    failureModes: p.failureModes.map((m) => ({ ...m, mode: tx(m.mode, getCurrentLocale()) })),
+    recommendedAction: tx(p.recommendedAction, getCurrentLocale()),
+    contributingFactors: p.contributingFactors.map((f) => ({ ...f, label: factorLabel(f.params, sensorLabel, getCurrentLocale()), detail: factorDetail(f.params, getCurrentLocale()) })),
+  };
+}
+
+function userName(id?: string | null) {
+  if (!id) return getCurrentLocale() === "th" ? "ยังไม่มอบหมาย" : "Unassigned";
+  return db.users.find((u) => u.id === id)?.name ?? (getCurrentLocale() === "th" ? "ไม่ทราบชื่อผู้ใช้" : "Unknown user");
+}
+
+function eventToText(e: EventRecord) {
+  const params = { ...e.params };
+  if (typeof params.user === "string") params.user = userName(params.user);
+  return { at: e.at, by: e.by, text: eventText(e.code, getCurrentLocale(), params) };
+}
+
+function toAlert(r: AlertRecord): Alert {
+  const asset = ASSETS.find((a) => a.id === r.assetId);
+  const p = asset?.prediction;
+  const text = alertText(r.tpl, getCurrentLocale(), {
+    sensorLabel: "sensor" in r.tpl ? sensorLabel(r.tpl.sensor) : "",
+    prediction: p ? { mode: tx(p.failureModes[0].mode, getCurrentLocale()), rul: p.rulDays, low: p.rulLow, high: p.rulHigh, level: Math.round(p.intervalLevel * 100) } : undefined,
+  });
+  const { tpl: _tpl, events, ...rest } = r;
+  void _tpl;
+  return { ...rest, ...text, events: events.map(eventToText) };
+}
+
+function toWorkOrder(r: WorkOrderRecord): WorkOrder {
+  return { ...r, title: resolveText(r.title, getCurrentLocale()), description: resolveText(r.description, getCurrentLocale()) };
+}
+
+function localizeRule(r: NotificationRule): NotificationRule {
+  return { ...r, name: tx(r.name, getCurrentLocale()), recipients: tx(r.recipients, getCurrentLocale()), escalateTo: r.escalateTo ? tx(r.escalateTo, getCurrentLocale()) : null };
+}
+
 // ---- helpers ------------------------------------------------------------------------
 
 const STATUS_RANK = { critical: 0, warning: 1, offline: 2, healthy: 3 } as const;
-
 const SEVERITY_RANK = { critical: 0, warning: 1, info: 2 } as const;
 
 function toRow(asset: Asset): AssetRow {
@@ -141,10 +198,12 @@ function toRow(asset: Asset): AssetRow {
     );
   return {
     ...asset,
-    siteName: site.name,
-    lineName: site.lines.find((l) => l.id === asset.lineId)?.name ?? asset.lineId,
+    name: txName(asset.name, getCurrentLocale()),
+    prediction: localizePrediction(asset.prediction),
+    siteName: tx(site.name, getCurrentLocale()),
+    lineName: tx(site.lines.find((l) => l.id === asset.lineId)?.name ?? asset.lineId, getCurrentLocale()),
     openAlerts: db.alerts.filter((a) => a.assetId === asset.id && (a.status === "open" || a.status === "acknowledged")).length,
-    primaryAlert: active[0] ? structuredClone(active[0]) : undefined,
+    primaryAlert: active[0] ? toAlert(active[0]) : undefined,
     openWorkOrderId: db.workOrders.find((w) => w.assetId === asset.id && w.status !== "done")?.id,
   };
 }
@@ -185,17 +244,17 @@ function aggregateKpis(siteId: string | null): SiteKpis {
   };
 }
 
-function alertRows(filter: (a: Alert) => boolean): AlertRow[] {
+function alertRows(filter: (a: AlertRecord) => boolean): AlertRow[] {
   return db.alerts
     .filter(filter)
-    .map((a) => ({ ...a, asset: rowById(a.assetId)! }))
+    .map((a) => ({ ...toAlert(a), asset: rowById(a.assetId)! }))
     .filter((a) => a.asset);
 }
 
-function workOrderRows(filter: (w: WorkOrder) => boolean): WorkOrderRow[] {
+function workOrderRows(filter: (w: WorkOrderRecord) => boolean): WorkOrderRow[] {
   return db.workOrders
     .filter(filter)
-    .map((w) => ({ ...w, asset: rowById(w.assetId)! }))
+    .map((w) => ({ ...toWorkOrder(w), asset: rowById(w.assetId)! }))
     .filter((w) => w.asset);
 }
 
@@ -204,13 +263,17 @@ function latestDataAt(assets: Asset[]) {
   return online.sort().at(-1) ?? new Date(NOW).toISOString();
 }
 
+function pushEvent(a: AlertRecord, code: EventCode, params?: Record<string, string | number>) {
+  a.events.push({ at: new Date().toISOString(), code, by: CURRENT_USER_ID, params });
+}
+
 // ---- reads --------------------------------------------------------------------------
 
 export const api = {
   currentUserId: CURRENT_USER_ID,
 
   sites(): Site[] {
-    return SITES;
+    return SITES.map(localizeSite);
   },
 
   async getOverview(siteId: string | null): Promise<OverviewData> {
@@ -242,7 +305,7 @@ export const api = {
         siteHealth: siteIds.map((id) => {
           const list = assetsFor(id);
           const count = (s: Asset["status"]) => list.filter((a) => a.status === s).length;
-          return { siteId: id, siteName: SITES.find((s) => s.id === id)!.name, critical: count("critical"), warning: count("warning"), healthy: count("healthy"), offline: count("offline") };
+          return { siteId: id, siteName: tx(SITES.find((s) => s.id === id)!.name, getCurrentLocale()), critical: count("critical"), warning: count("warning"), healthy: count("healthy"), offline: count("offline") };
         }),
         dueWorkOrders: workOrderRows(
           (w) => (!siteId || w.assetId.startsWith(siteId)) && w.status !== "done" && new Date(w.dueDate).getTime() < NOW + 7 * DAY,
@@ -257,14 +320,14 @@ export const api = {
       // "Empty" = an all-clear fleet: nothing at risk, no alerts, nothing due.
       const all = produce();
       return {
-      ...all,
-      siteHealth: all.siteHealth.map((s) => ({ ...s, healthy: s.critical + s.warning + s.offline + s.healthy, critical: 0, warning: 0, offline: 0 })),
-      atRisk: { critical: 0, warning: 0, previous: 0 },
-      predicted7d: [],
-      predicted30d: [],
-      attention: [],
-      recentAlerts: [],
-      dueWorkOrders: [],
+        ...all,
+        siteHealth: all.siteHealth.map((s) => ({ ...s, healthy: s.critical + s.warning + s.offline + s.healthy, critical: 0, warning: 0, offline: 0 })),
+        atRisk: { critical: 0, warning: 0, previous: 0 },
+        predicted7d: [],
+        predicted30d: [],
+        attention: [],
+        recentAlerts: [],
+        dueWorkOrders: [],
       };
     });
   },
@@ -285,12 +348,12 @@ export const api = {
       if (!asset) return null;
       return {
         asset: toRow(asset),
-        site: SITES.find((s) => s.id === asset.siteId)!,
+        site: localizeSite(SITES.find((s) => s.id === asset.siteId)!),
         health: buildHealthSeries(id),
-        history: buildHistory(id, asset.lastInspectionAt),
+        history: buildHistory(id, asset.lastInspectionAt, getCurrentLocale()),
         alerts: alertRows((a) => a.assetId === id),
         workOrders: workOrderRows((w) => w.assetId === id),
-        parts: PARTS,
+        parts: api.parts(),
         settings: { ...db.prediction },
         dataUpdatedAt: asset.lastDataAt,
       };
@@ -311,10 +374,11 @@ export const api = {
   },
 
   async getSensorSeries(id: string, kind: SensorKind, range: TimeRange): Promise<SensorSeries | null> {
+    const localize = (s: SensorSeries | null) => (s ? { ...s, config: { ...s.config, label: sensorLabel(s.config.kind) } } : null);
     return read(
-      () => buildSensorSeries(id, kind, range),
+      () => localize(buildSensorSeries(id, kind, range)),
       () => {
-        const s = buildSensorSeries(id, kind, range);
+        const s = localize(buildSensorSeries(id, kind, range));
         return s ? { ...s, points: [], latest: null, anomalyCount: 0 } : null;
       },
     );
@@ -348,20 +412,25 @@ export const api = {
 
   async getSettings(): Promise<{ thresholds: ThresholdSetting[]; prediction: PredictionSettings; rules: NotificationRule[] }> {
     return read(
-      () => ({ thresholds: structuredClone(db.thresholds), prediction: { ...db.prediction }, rules: structuredClone(db.rules) }),
+      () => ({ thresholds: structuredClone(db.thresholds), prediction: { ...db.prediction }, rules: db.rules.map(localizeRule) }),
       () => ({ thresholds: [], prediction: { ...db.prediction }, rules: [] }),
     );
   },
 
   // Synchronous lookups used by forms (reference data, not subject to simulation)
   parts(): Part[] {
-    return PARTS;
+    return PARTS.map((p) => ({ ...p, name: tx(p.name, getCurrentLocale()) }));
   },
   users(): User[] {
     return db.users;
   },
   assetOptions(): AssetRow[] {
     return ASSETS.map(toRow);
+  },
+  userName,
+  partName(partNo: string) {
+    const p = PARTS.find((x) => x.partNo === partNo);
+    return p ? tx(p.name, getCurrentLocale()) : partNo;
   },
 
   // ---- writes -------------------------------------------------------------------------
@@ -374,7 +443,7 @@ export const api = {
       a.acknowledgedAt = new Date().toISOString();
       a.acknowledgedBy = CURRENT_USER_ID;
       a.snoozedUntil = undefined;
-      a.events.push({ at: a.acknowledgedAt, text: `Acknowledged by ${userName(CURRENT_USER_ID)}`, by: CURRENT_USER_ID });
+      pushEvent(a, "acknowledged", { user: CURRENT_USER_ID });
     });
   },
 
@@ -383,7 +452,8 @@ export const api = {
       const a = db.alerts.find((x) => x.id === id);
       if (!a) return;
       a.assigneeId = userId ?? undefined;
-      a.events.push({ at: new Date().toISOString(), text: userId ? `Assigned to ${userName(userId)}` : "Unassigned", by: CURRENT_USER_ID });
+      if (userId) pushEvent(a, "assigned", { user: userId });
+      else pushEvent(a, "unassigned");
     });
   },
 
@@ -393,7 +463,7 @@ export const api = {
       if (!a) return;
       a.status = "snoozed";
       a.snoozedUntil = new Date(Date.now() + hours * HOUR).toISOString();
-      a.events.push({ at: new Date().toISOString(), text: `Snoozed for ${hours} h`, by: CURRENT_USER_ID });
+      pushEvent(a, "snoozed", { hours });
     });
   },
 
@@ -404,7 +474,7 @@ export const api = {
       a.status = "open";
       a.snoozedUntil = undefined;
       a.resolvedAt = undefined;
-      a.events.push({ at: new Date().toISOString(), text: "Reopened", by: CURRENT_USER_ID });
+      pushEvent(a, "reopened");
     });
   },
 
@@ -414,14 +484,14 @@ export const api = {
       if (!a) return;
       a.status = "resolved";
       a.resolvedAt = new Date().toISOString();
-      a.events.push({ at: a.resolvedAt, text: "Resolved", by: CURRENT_USER_ID });
+      pushEvent(a, "resolved");
     });
   },
 
   createWorkOrder(input: CreateWorkOrderInput) {
     return write(() => {
       const id = `WO-${db.nextWorkOrderSeq++}`;
-      const wo: WorkOrder = { ...input, id, status: "open", createdAt: new Date().toISOString() };
+      const wo: WorkOrderRecord = { ...input, id, status: "open", createdAt: new Date().toISOString() };
       db.workOrders.unshift(wo);
       if (input.alertId) {
         const a = db.alerts.find((x) => x.id === input.alertId);
@@ -433,10 +503,10 @@ export const api = {
             a.acknowledgedBy = CURRENT_USER_ID;
           }
           if (input.assigneeId && !a.assigneeId) a.assigneeId = input.assigneeId;
-          a.events.push({ at: wo.createdAt, text: `Work order ${id} created`, by: CURRENT_USER_ID });
+          pushEvent(a, "wo-created", { wo: id });
         }
       }
-      return wo;
+      return toWorkOrder(wo);
     });
   },
 
@@ -462,6 +532,14 @@ export const api = {
       const idx = db.rules.findIndex((r) => r.id === rule.id);
       if (idx >= 0) db.rules[idx] = structuredClone(rule);
       else db.rules.push({ ...structuredClone(rule), id: `nr${db.nextRuleSeq++}` });
+    });
+  },
+
+  /** Toggle only the enabled flag, so seed text keeps its translations. */
+  setRuleEnabled(id: string, enabled: boolean) {
+    return write(() => {
+      const r = db.rules.find((x) => x.id === id);
+      if (r) r.enabled = enabled;
     });
   },
 
@@ -492,14 +570,4 @@ export const api = {
   },
 };
 
-export function userName(id?: string | null) {
-  if (!id) return "Unassigned";
-  return db.users.find((u) => u.id === id)?.name ?? "Unknown user";
-}
-
-export function partName(partNo: string) {
-  return PARTS.find((p) => p.partNo === partNo)?.name ?? partNo;
-}
-
 export type { WorkOrderStatus };
-export { SENSOR_LABELS } from "@/lib/mock/catalog";

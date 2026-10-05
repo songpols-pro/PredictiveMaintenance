@@ -12,8 +12,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useSite } from "@/components/providers";
 import { api, byUrgency, type AssetRow } from "@/lib/api";
 import type { AssetStatus, AssetType } from "@/lib/types";
-import { formatDate, formatDays, formatRelative, formatRulRange } from "@/lib/format";
 import { useNow, useQuery } from "@/lib/use-query";
+import { useI18n } from "@/lib/i18n/provider";
 import { PageHeader } from "@/components/pdm/page-header";
 import { DataFreshness } from "@/components/pdm/freshness";
 import { ASSET_STATUS, StatusChip } from "@/components/pdm/status";
@@ -26,32 +26,12 @@ type SortKey = "urgency" | "name" | "site" | "line" | "type" | "health" | "rul" 
 const STATUSES: AssetStatus[] = ["critical", "warning", "healthy", "offline"];
 const TYPES: AssetType[] = ["Air Compressor", "CNC Spindle", "Centrifugal Pump", "Conveyor", "Electric Motor", "Fan / Blower", "Gearbox", "Hydraulic Press"];
 
-const SORTERS: Record<SortKey, (a: AssetRow, b: AssetRow) => number> = {
-  urgency: byUrgency,
-  name: (a, b) => a.name.localeCompare(b.name),
-  site: (a, b) => a.siteName.localeCompare(b.siteName) || a.lineName.localeCompare(b.lineName),
-  line: (a, b) => a.lineName.localeCompare(b.lineName),
-  type: (a, b) => a.type.localeCompare(b.type),
-  health: (a, b) => a.healthScore - b.healthScore,
-  rul: (a, b) => (a.status === "offline" ? 1e6 : (a.prediction?.rulDays ?? 1e5)) - (b.status === "offline" ? 1e6 : (b.prediction?.rulDays ?? 1e5)),
-  inspection: (a, b) => a.lastInspectionAt.localeCompare(b.lastInspectionAt),
-};
-
-const SORT_LABEL: Record<SortKey, string> = {
-  urgency: "status",
-  name: "asset name",
-  site: "site",
-  line: "line",
-  type: "asset type",
-  health: "health score",
-  rul: "remaining useful life",
-  inspection: "last inspection",
-};
-
 export function AssetListView() {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
+  const { m, f, locale } = useI18n();
+  const a11n = m.assets;
   const { siteId } = useSite();
   const now = useNow();
   const { data, error, loading, retry } = useQuery(`assets:${siteId}`, () => api.listAssets(siteId));
@@ -88,18 +68,30 @@ export function AssetListView() {
 
   const filtered = useMemo(() => {
     if (!data) return [];
+    const typeLabel = (t: AssetType) => m.assetTypes[t];
+    const collator = new Intl.Collator(locale);
+    const sorters: Record<SortKey, (a: AssetRow, b: AssetRow) => number> = {
+      urgency: byUrgency,
+      name: (a, b) => collator.compare(a.name, b.name),
+      site: (a, b) => collator.compare(a.siteName, b.siteName) || collator.compare(a.lineName, b.lineName),
+      line: (a, b) => collator.compare(a.lineName, b.lineName),
+      type: (a, b) => collator.compare(typeLabel(a.type), typeLabel(b.type)),
+      health: (a, b) => a.healthScore - b.healthScore,
+      rul: (a, b) => (a.status === "offline" ? 1e6 : (a.prediction?.rulDays ?? 1e5)) - (b.status === "offline" ? 1e6 : (b.prediction?.rulDays ?? 1e5)),
+      inspection: (a, b) => a.lastInspectionAt.localeCompare(b.lastInspectionAt),
+    };
     const needle = q.trim().toLowerCase();
     const rows = data.assets.filter((a) => {
-      if (needle && ![a.name, a.id, a.type, a.manufacturer, a.model].some((f) => f.toLowerCase().includes(needle))) return false;
+      if (needle && ![a.name, a.id, a.type, typeLabel(a.type), a.manufacturer, a.model].some((field) => field.toLowerCase().includes(needle))) return false;
       if (statusFilter.length && !statusFilter.includes(a.status)) return false;
       if (typeFilter !== "all" && a.type !== typeFilter) return false;
       if (lineFilter !== "all" && a.lineId !== lineFilter) return false;
       return true;
     });
-    const sorter = SORTERS[sort] ?? byUrgency;
+    const sorter = sorters[sort] ?? byUrgency;
     rows.sort((a, b) => (dir === "asc" ? sorter(a, b) : -sorter(a, b)) || a.id.localeCompare(b.id));
     return rows;
-  }, [data, q, statusFilter, typeFilter, lineFilter, sort, dir]);
+  }, [data, q, statusFilter, typeFilter, lineFilter, sort, dir, m, locale]);
 
   const counts = useMemo(() => {
     const c = { critical: 0, warning: 0, healthy: 0, offline: 0 } as Record<AssetStatus, number>;
@@ -116,22 +108,20 @@ export function AssetListView() {
 
   function setSort(key: SortKey) {
     if (sort === key) update({ dir: dir === "asc" ? "desc" : "asc" });
-    else update({ sort: key, dir: key === "inspection" ? "asc" : "asc" });
+    else update({ sort: key, dir: "asc" });
   }
+
+  const clearAll = () => update({ q: null, status: null, type: null, line: null });
 
   return (
     <div className="flex min-w-0 flex-col gap-5">
-      <PageHeader
-        title="Assets"
-        description="Search, filter and sort every monitored asset. Select an asset to see its health, prediction and sensor data."
-        meta={data ? <DataFreshness at={data.dataUpdatedAt} /> : null}
-      />
+      <PageHeader title={a11n.title} description={a11n.description} meta={data ? <DataFreshness at={data.dataUpdatedAt} /> : null} />
 
-      <section aria-label="Filters" className="flex flex-col gap-3 rounded-lg border bg-card p-3">
+      <section aria-label={a11n.filters} className="flex flex-col gap-3 rounded-lg border bg-card p-3">
         <div className="flex flex-wrap items-end gap-3">
           <div className="grid min-w-56 flex-1 gap-1">
             <label htmlFor="asset-search" className="text-xs font-medium text-text-secondary">
-              Search
+              {m.common.search}
             </label>
             <div className="relative">
               <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -139,7 +129,7 @@ export function AssetListView() {
                 id="asset-search"
                 type="search"
                 value={search}
-                placeholder="Name, ID, type or manufacturer"
+                placeholder={a11n.searchPlaceholder}
                 className="h-9 pl-8"
                 onChange={(e) => {
                   setSearch(e.target.value);
@@ -150,14 +140,14 @@ export function AssetListView() {
           </div>
           <div className="grid gap-1">
             <label htmlFor="line-filter" className="text-xs font-medium text-text-secondary">
-              Line
+              {a11n.line}
             </label>
             <Select value={lineFilter} onValueChange={(v) => update({ line: v })}>
               <SelectTrigger id="line-filter" className="h-9 w-48">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All lines</SelectItem>
+                <SelectItem value="all">{a11n.allLines}</SelectItem>
                 {sites.map((s) => (
                   <SelectGroup key={s.id}>
                     <SelectLabel>{s.name}</SelectLabel>
@@ -174,32 +164,32 @@ export function AssetListView() {
           </div>
           <div className="grid gap-1">
             <label htmlFor="type-filter" className="text-xs font-medium text-text-secondary">
-              Asset type
+              {a11n.type}
             </label>
             <Select value={typeFilter} onValueChange={(v) => update({ type: v })}>
               <SelectTrigger id="type-filter" className="h-9 w-48">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All types</SelectItem>
+                <SelectItem value="all">{m.common.allTypes}</SelectItem>
                 {TYPES.map((t) => (
                   <SelectItem key={t} value={t}>
-                    {t}
+                    {m.assetTypes[t]}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
           {hasFilters ? (
-            <Button variant="ghost" className="h-9" onClick={() => update({ q: null, status: null, type: null, line: null })}>
+            <Button variant="ghost" className="h-9" onClick={clearAll}>
               <FilterX aria-hidden />
-              Clear filters
+              {m.common.clearFilters}
             </Button>
           ) : null}
         </div>
-        <div role="group" aria-label="Filter by status" className="flex flex-wrap items-center gap-2">
+        <div role="group" aria-label={a11n.statusGroup} className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-medium text-text-secondary" aria-hidden>
-            Status
+            {a11n.status}
           </span>
           {STATUSES.map((s) => {
             const meta = ASSET_STATUS[s];
@@ -215,7 +205,7 @@ export function AssetListView() {
                 className={cn("h-8 rounded-full", pressed && "border-primary bg-selected text-link hover:bg-selected")}
               >
                 <Icon aria-hidden className={cn(meta.tone === "critical" && "text-critical", meta.tone === "warning" && "text-warning", meta.tone === "healthy" && "text-healthy", meta.tone === "offline" && "text-offline")} />
-                {meta.label}
+                {m.status.asset[s]}
                 <span className="text-muted-foreground tabular">{data ? counts[s] : "–"}</span>
               </Button>
             );
@@ -224,50 +214,45 @@ export function AssetListView() {
       </section>
 
       {error ? (
-        <ErrorState title="Couldn’t load assets" error={error} onRetry={retry} />
+        <ErrorState title={a11n.errorTitle} error={error} onRetry={retry} />
       ) : loading || !data ? (
-        <TableSkeleton />
+        <TableSkeleton label={a11n.loading} />
       ) : data.assets.length === 0 ? (
-        <EmptyState
-          icon={Factory}
-          title="No assets connected yet"
-          description="Connect a historian, PLC gateway or CMMS import to start monitoring equipment. Assets appear here once data arrives."
-          action={<Button onClick={() => toast.info("Data source setup isn’t part of this demo.")}>Connect a data source</Button>}
-        />
+        <EmptyState icon={Factory} title={a11n.emptyTitle} description={a11n.emptyDesc} action={<Button onClick={() => toast.info(a11n.connectToast)}>{a11n.connect}</Button>} />
       ) : (
         <section aria-labelledby="asset-table-caption" className="flex min-w-0 flex-col gap-2">
           <p aria-live="polite" className="text-xs text-text-secondary">
-            Showing <span className="font-semibold text-foreground">{filtered.length}</span> of {data.assets.length} assets
+            {a11n.showing(filtered.length, data.assets.length)}
           </p>
           {filtered.length === 0 ? (
             <EmptyState
               icon={SearchX}
-              title="No assets match these filters"
-              description="Try a different search term or remove a filter."
+              title={a11n.noMatchTitle}
+              description={a11n.noMatchDesc}
               action={
-                <Button variant="outline" onClick={() => update({ q: null, status: null, type: null, line: null })}>
-                  Clear filters
+                <Button variant="outline" onClick={clearAll}>
+                  {m.common.clearFilters}
                 </Button>
               }
             />
           ) : (
-            <div tabIndex={0} role="region" aria-label="Assets table" className="relative overflow-x-auto rounded-lg border bg-card">
+            <div tabIndex={0} role="region" aria-label={a11n.tableRegion} className="relative overflow-x-auto rounded-lg border bg-card">
               <table className="w-full min-w-[1100px] text-sm">
                 <caption id="asset-table-caption" className="sr-only">
-                  Assets, sorted by {SORT_LABEL[sort]}, {dir === "asc" ? "ascending" : "descending"}
+                  {a11n.caption(a11n.sortBy[sort], dir === "asc")}
                 </caption>
                 <thead className="border-b bg-muted text-left text-xs text-text-secondary">
                   <tr>
-                    <SortHeader label="Asset" k="name" sort={sort} dir={dir} onSort={setSort} />
-                    <SortHeader label="Site" k="site" sort={sort} dir={dir} onSort={setSort} />
-                    <SortHeader label="Line" k="line" sort={sort} dir={dir} onSort={setSort} />
-                    <SortHeader label="Type" k="type" sort={sort} dir={dir} onSort={setSort} />
-                    <SortHeader label="Health" k="health" sort={sort} dir={dir} onSort={setSort} />
-                    <SortHeader label="RUL" k="rul" sort={sort} dir={dir} onSort={setSort} hint="Remaining useful life, median and 80% interval" />
-                    <SortHeader label="Status" k="urgency" sort={sort} dir={dir} onSort={setSort} />
-                    <SortHeader label="Last inspection" k="inspection" sort={sort} dir={dir} onSort={setSort} />
+                    <SortHeader label={a11n.cols.asset} k="name" sort={sort} dir={dir} onSort={setSort} />
+                    <SortHeader label={a11n.cols.site} k="site" sort={sort} dir={dir} onSort={setSort} />
+                    <SortHeader label={a11n.cols.line} k="line" sort={sort} dir={dir} onSort={setSort} />
+                    <SortHeader label={a11n.cols.type} k="type" sort={sort} dir={dir} onSort={setSort} />
+                    <SortHeader label={a11n.cols.health} k="health" sort={sort} dir={dir} onSort={setSort} />
+                    <SortHeader label={a11n.cols.rul} k="rul" sort={sort} dir={dir} onSort={setSort} hint={a11n.rulHint} />
+                    <SortHeader label={a11n.cols.status} k="urgency" sort={sort} dir={dir} onSort={setSort} />
+                    <SortHeader label={a11n.cols.inspection} k="inspection" sort={sort} dir={dir} onSort={setSort} />
                     <th scope="col" className="px-3 py-2 font-medium">
-                      Open alerts
+                      {a11n.cols.openAlerts}
                     </th>
                   </tr>
                 </thead>
@@ -275,25 +260,25 @@ export function AssetListView() {
                   {filtered.map((a) => (
                     <tr key={a.id} className="hover:bg-accent/60">
                       <th scope="row" className="px-3 py-2.5 text-left font-normal">
-                        <Link href={`/assets/${a.id}`} className="font-medium whitespace-nowrap underline-offset-2 hover:underline">
+                        <Link href={`/app/assets/${a.id}`} className="font-medium whitespace-nowrap underline-offset-2 hover:underline">
                           {a.name}
                         </Link>
                         <span className="block text-xs text-muted-foreground">{a.id}</span>
                       </th>
                       <td className="px-3 py-2.5 whitespace-nowrap">{a.siteName}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap">{a.lineName}</td>
-                      <td className="px-3 py-2.5 whitespace-nowrap">{a.type}</td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">{m.assetTypes[a.type]}</td>
                       <td className="px-3 py-2.5">
                         <HealthMeter score={a.healthScore} status={a.status} delta={a.healthDelta7d} showDelta />
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap">
                         {a.status === "offline" || !a.prediction ? (
-                          <span className="text-text-secondary">Paused</span>
+                          <span className="text-text-secondary">{a11n.paused}</span>
                         ) : (
                           <>
-                            <span className="font-semibold tabular">{formatDays(a.prediction.rulDays)}</span>
+                            <span className="font-semibold tabular">{f.days(a.prediction.rulDays)}</span>
                             <span className="block text-xs text-muted-foreground tabular">
-                              {formatRulRange(a.prediction.rulLow, a.prediction.rulHigh)} · {Math.round(a.prediction.confidence * 100)}% conf.
+                              {f.rulRange(a.prediction.rulLow, a.prediction.rulHigh)} · {m.status.confidenceShort(Math.round(a.prediction.confidence * 100))}
                             </span>
                           </>
                         )}
@@ -302,14 +287,14 @@ export function AssetListView() {
                         <StatusChip status={a.status} size="sm" />
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap">
-                        <time dateTime={a.lastInspectionAt}>{formatDate(a.lastInspectionAt)}</time>
-                        <span className="block text-xs text-muted-foreground">{formatRelative(a.lastInspectionAt, now)}</span>
+                        <time dateTime={a.lastInspectionAt}>{f.date(a.lastInspectionAt)}</time>
+                        <span className="block text-xs text-muted-foreground">{f.relative(a.lastInspectionAt, now)}</span>
                       </td>
                       <td className="px-3 py-2.5 tabular">
                         {a.openAlerts > 0 ? (
-                          <Link href={`/alerts?asset=${a.id}`} className="font-medium text-link underline underline-offset-2 hover:decoration-2">
+                          <Link href={`/app/alerts?asset=${a.id}`} className="font-medium text-link underline underline-offset-2 hover:decoration-2">
                             {a.openAlerts}
-                            <span className="sr-only"> open alerts for {a.name}</span>
+                            <span className="sr-only">{a11n.openAlertsSr(a.name)}</span>
                           </Link>
                         ) : (
                           <span className="text-muted-foreground">0</span>
@@ -345,10 +330,10 @@ function SortHeader({ label, k, sort, dir, onSort, hint }: { label: string; k: S
   );
 }
 
-function TableSkeleton() {
+function TableSkeleton({ label }: { label: string }) {
   return (
     <div role="status" aria-busy="true" className="flex flex-col gap-2 rounded-lg border bg-card p-3">
-      <span className="sr-only">Loading assets…</span>
+      <span className="sr-only">{label}</span>
       <Skeleton className="h-8 w-full" />
       {Array.from({ length: 10 }).map((_, i) => (
         <Skeleton key={i} className="h-11 w-full" />

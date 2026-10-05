@@ -7,12 +7,14 @@ import type {
   AssetStatus,
   AssetType,
   ContributingFactor,
+  FactorParams,
   HealthPoint,
   Prediction,
   SensorKind,
 } from "@/lib/types";
 import { SENSOR_LABELS, TYPE_PROFILES, type FailureModeDef } from "./catalog";
 import { DAY, HOUR, NOW, between, gaussian, intBetween, isoAgo, round, seeded } from "./random";
+import { factorDetail, factorLabel } from "./l10n";
 
 const H0 = 92; // health score of a like-new asset
 const FAILURE_LEVEL = 20; // health score treated as functional failure
@@ -270,33 +272,37 @@ export function sensorNowValue(model: AssetModel, kind: SensorKind): number {
 function buildFactors(model: AssetModel, rand: () => number): ContributingFactor[] {
   const { failureMode, asset } = model;
   const profile = TYPE_PROFILES[asset.type];
-  const factors: ContributingFactor[] = [];
-  const describe = (kind: SensorKind) => {
+  const paramsFor = (kind: SensorKind): FactorParams => {
     const tpl = profile.sensors.find((s) => s.kind === kind)!;
     const base = model.sensorBaselines[kind] ?? tpl.base;
     const now = sensorNowValue(model, kind);
-    const digits = tpl.unit === "mm/s" ? 1 : tpl.unit === "bar" && base < 20 ? 2 : 1;
-    if (tpl.direction === "below") {
-      const pct = Math.round(((base - now) / base) * 100);
-      return `${round(now, digits)} ${tpl.unit}, ${pct}% below 30-day baseline (${round(base, digits)} ${tpl.unit})`;
-    }
-    if (tpl.unit === "°C") return `${round(now, 1)} °C, +${round(now - base, 1)} °C over 30-day baseline`;
-    if (tpl.unit === "A") return `${round(now, 1)} A, ${Math.round(((now - base) / base) * 100)}% above baseline load`;
-    return `${round(now, digits)} ${tpl.unit}, ${round(now / base, 1)}× 30-day baseline (${round(base, digits)} ${tpl.unit})`;
+    const digits = tpl.unit === "bar" && base < 20 ? 2 : 1;
+    if (tpl.direction === "below") return { kind: "below", sensor: kind, now: round(now, digits), base: round(base, digits), unit: tpl.unit, pct: Math.round(((base - now) / base) * 100) };
+    if (tpl.unit === "°C") return { kind: "temp", sensor: kind, now: round(now, 1), delta: round(now - base, 1) };
+    if (tpl.unit === "A") return { kind: "load", sensor: kind, now: round(now, 1), pct: Math.round(((now - base) / base) * 100) };
+    return { kind: "ratio", sensor: kind, now: round(now, digits), base: round(base, digits), unit: tpl.unit, ratio: round(now / base, 1) };
   };
+  // Stored with English text; the API re-renders label/detail from `params` in the user's language.
+  const make = (params: FactorParams, weight: number, sensor?: SensorKind): ContributingFactor => ({
+    label: factorLabel(params, (k) => SENSOR_LABELS[k], "en"),
+    detail: factorDetail(params, "en"),
+    weight,
+    sensor,
+    params,
+  });
 
-  factors.push({ label: SENSOR_LABELS[failureMode.primary], detail: describe(failureMode.primary), weight: between(rand, 0.42, 0.52), sensor: failureMode.primary });
+  const factors: ContributingFactor[] = [make(paramsFor(failureMode.primary), between(rand, 0.42, 0.52), failureMode.primary)];
   const secondaries = Object.entries(failureMode.secondary)
     .filter(([kind]) => asset.sensors.includes(kind as SensorKind))
     .sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0));
   for (const [kind, w] of secondaries) {
     if ((w ?? 0) < 0.2) continue;
-    factors.push({ label: SENSOR_LABELS[kind as SensorKind], detail: describe(kind as SensorKind), weight: (w ?? 0) * between(rand, 0.3, 0.42), sensor: kind as SensorKind });
+    factors.push(make(paramsFor(kind as SensorKind), (w ?? 0) * between(rand, 0.3, 0.42), kind as SensorKind));
   }
-  factors.push({ label: "Anomaly rate (7 d)", detail: `${intBetween(rand, 6, 19)} anomalous readings vs. ${intBetween(rand, 0, 2)} in the prior 7 days`, weight: between(rand, 0.08, 0.13) });
-  factors.push({ label: "Run hours since overhaul", detail: `${(asset.operatingHours % 18000).toLocaleString("en-US")} h (OEM interval 16,000 h)`, weight: between(rand, 0.04, 0.08) });
+  factors.push(make({ kind: "anomalies", recent: intBetween(rand, 6, 19), prior: intBetween(rand, 0, 2) }, between(rand, 0.08, 0.13)));
+  factors.push(make({ kind: "hours", hours: asset.operatingHours % 18000, interval: 16000 }, between(rand, 0.04, 0.08)));
 
-  const total = factors.reduce((s, f) => s + f.weight, 0);
+  const total = factors.reduce((sum, f) => sum + f.weight, 0);
   return factors.map((f) => ({ ...f, weight: round(f.weight / total, 2) }));
 }
 

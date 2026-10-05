@@ -2,12 +2,12 @@
 const OUT = "E:/POP/CLAUDE/Monitor/screenshots/states";
 const BASE = "http://localhost:3000";
 const SCREENS = [
-  ["overview", "/"],
-  ["assets", "/assets"],
-  ["asset-detail", "/assets/RYG-PMP-303"],
-  ["alerts", "/alerts"],
-  ["work-orders", "/work-orders"],
-  ["settings", "/settings"],
+  ["overview", "/app"],
+  ["assets", "/app/assets"],
+  ["asset-detail", "/app/assets/RYG-PMP-303"],
+  ["alerts", "/app/alerts"],
+  ["work-orders", "/app/work-orders"],
+  ["settings", "/app/settings"],
 ];
 
 export default async function (page) {

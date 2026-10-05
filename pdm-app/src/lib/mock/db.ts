@@ -2,16 +2,14 @@
 // views re-fetch. Replace src/lib/api.ts with real HTTP calls and this file goes away.
 
 import type {
-  Alert,
   NotificationRule,
   PredictionSettings,
   SimulationMode,
   ThresholdSetting,
   User,
-  WorkOrder,
 } from "@/lib/types";
 import { DEFAULT_NOTIFICATION_RULES, DEFAULT_PREDICTION_SETTINGS, TYPE_PROFILES, USERS } from "./catalog";
-import { ALERTS, WORK_ORDERS } from "./records";
+import { ALERTS, WORK_ORDERS, type AlertRecord, type WorkOrderRecord } from "./records";
 import type { AssetType } from "@/lib/types";
 
 function defaultThresholds(): ThresholdSetting[] {
@@ -25,8 +23,8 @@ function defaultThresholds(): ThresholdSetting[] {
 }
 
 export const db = {
-  alerts: structuredClone(ALERTS) as Alert[],
-  workOrders: structuredClone(WORK_ORDERS) as WorkOrder[],
+  alerts: structuredClone(ALERTS) as AlertRecord[],
+  workOrders: structuredClone(WORK_ORDERS) as WorkOrderRecord[],
   users: structuredClone(USERS) as User[],
   thresholds: defaultThresholds(),
   prediction: { ...DEFAULT_PREDICTION_SETTINGS } as PredictionSettings,

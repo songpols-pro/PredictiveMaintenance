@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Noto_Sans_Thai } from "next/font/google";
 import { Providers } from "@/components/providers";
-import { AppShell } from "@/components/app-shell/app-shell";
+import { getLocale, getMessages } from "@/lib/i18n/server";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -14,26 +14,35 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: {
-    default: "Overview · PdM Monitor",
-    template: "%s · PdM Monitor",
-  },
-  description: "Predictive maintenance for industrial equipment: asset health, remaining useful life, alerts and work orders.",
-};
+// Geist has no Thai glyphs; the browser falls back per character to Noto Sans Thai.
+const notoSansThai = Noto_Sans_Thai({
+  variable: "--font-thai",
+  subsets: ["thai"],
+  display: "swap",
+});
+
+export async function generateMetadata(): Promise<Metadata> {
+  const m = await getMessages();
+  return {
+    title: {
+      default: `${m.meta.titles.overview} · ${m.meta.appName}`,
+      template: `%s · ${m.meta.appName}`,
+    },
+    description: m.meta.description,
+  };
+}
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  const locale = await getLocale();
   return (
-    <html lang="en" suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+    <html lang={locale} suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable} ${notoSansThai.variable} antialiased`}>
       <body>
-        <Providers>
-          <AppShell>{children}</AppShell>
-        </Providers>
+        <Providers locale={locale}>{children}</Providers>
       </body>
     </html>
   );

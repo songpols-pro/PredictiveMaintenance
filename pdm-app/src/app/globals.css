@@ -17,9 +17,10 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  /* Latin in Geist, Thai falls back per glyph to Noto Sans Thai, then Windows' Thai faces. */
+  --font-sans: var(--font-geist-sans), var(--font-thai), "Leelawadee UI", Tahoma, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-geist-sans);
+  --font-heading: var(--font-sans);
 
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
@@ -252,6 +253,36 @@
 }
 
 /*
+ * Thai typography: stacked vowels and tone marks need taller lines, Thai glyphs read
+ * smaller than Latin at the same px size, and letter-spacing separates marks from their
+ * consonants. Unlayered so it overrides Tailwind's theme variables.
+ */
+html:lang(th) {
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.6;
+  --text-sm: 0.9375rem;
+  --text-sm--line-height: 1.6;
+  --text-base: 1rem;
+  --text-base--line-height: 1.7;
+  --text-lg--line-height: 1.6;
+  --text-xl--line-height: 1.55;
+  --text-2xl--line-height: 1.45;
+  --text-3xl--line-height: 1.4;
+  --leading-tight: 1.45;
+  --leading-snug: 1.5;
+  --tracking-tight: 0em;
+  --tracking-wide: 0em;
+}
+html:lang(th) {
+  --text-4xl--line-height: 1.35;
+  --text-5xl--line-height: 1.3;
+}
+html:lang(th) body {
+  font-size: 0.9375rem;
+  line-height: 1.65;
+}
+
+/*
  * Visible focus everywhere. Unlayered so it wins over component `outline-none`
  * utilities; 2px solid ring at >= 3:1 against every surface (WCAG 2.4.7 / 2.4.13).
  */
@@ -265,6 +296,22 @@
 .recharts-surface:focus-visible {
   outline: 2px solid var(--ring) !important;
   outline-offset: 2px;
+}
+
+/* Marketing hero: a faint blueprint grid with a soft blue glow (decorative only). */
+.marketing-hero-bg {
+  background-image:
+    radial-gradient(ellipse 60% 50% at 75% 20%, color-mix(in oklch, var(--primary) 14%, transparent), transparent 70%),
+    linear-gradient(to right, color-mix(in oklch, var(--border) 70%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklch, var(--border) 70%, transparent) 1px, transparent 1px);
+  background-size: auto, 48px 48px, 48px 48px;
+  mask-image: linear-gradient(to bottom, black 55%, transparent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

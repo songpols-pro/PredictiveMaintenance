@@ -12,18 +12,19 @@ npm run dev        # http://localhost:3000
 npm run build      # production build
 ```
 
-## Screens
+## Routes
 
 | Route | Screen |
 |---|---|
-| `/` | Fleet overview: KPIs (assets at risk, predicted failures 7/30 d, MTBF, MTTR, OEE, unplanned downtime), ranked "Needs attention now" list, recent alerts, health by site, work orders due |
-| `/assets` | Asset list: search, filter (status, line, type), sort; state kept in the URL (`?status=critical,warning&sort=rul`) |
-| `/assets/[id]` | Asset detail: health score, RUL with 80% interval, failure mode, contributing factors, health trend + forecast cone, 4 sensor charts (thresholds + anomaly markers, 24 h–90 d), maintenance timeline |
-| `/alerts` | Alert triage: status/severity filters, list + detail panel, acknowledge, assign, snooze, resolve, create work order, evidence chart, timeline |
-| `/work-orders` | Board (Open / In progress / Done) with drag-and-drop **and** a "Move to" menu, detail sheet, parts availability |
-| `/settings` | Alert thresholds (validated), notification rules, users and roles + permission matrix |
+| `/` | **Public website** (marketing): hero with product preview, KPIs, approaches, how it works, features, product tour (real screenshots), supported equipment, roles, FAQ, demo-request form and contact channels |
+| `/app` | Fleet overview: KPIs (assets at risk, predicted failures 7/30 d, MTBF, MTTR, OEE, unplanned downtime), ranked "Needs attention now" list, recent alerts, health by site, work orders due |
+| `/app/assets` | Asset list: search, filter (status, line, type), sort; state kept in the URL (`?status=critical,warning&sort=rul`) |
+| `/app/assets/[id]` | Asset detail: health score, RUL with 80% interval, failure mode, contributing factors, health trend + forecast cone, 4 sensor charts (thresholds + anomaly markers, 24 h–90 d), maintenance timeline |
+| `/app/alerts` | Alert triage: status/severity filters, list + detail panel, acknowledge, assign, snooze, resolve, create work order, evidence chart, timeline |
+| `/app/work-orders` | Board (Open / In progress / Done) with drag-and-drop **and** a "Move to" menu, detail sheet, parts availability |
+| `/app/settings` | Alert thresholds (validated), notification rules, users and roles + permission matrix |
 
-Every screen has loading, empty and error states. Preview them with **Demo** in the top bar (Live data / Loading / Empty / Error).
+Every app screen has loading, empty and error states. Preview them with **Demo** in the top bar (Live data / Loading / Empty / Error).
 
 ## Structure
 
@@ -34,14 +35,25 @@ src/
     app-shell/            side nav, top bar, skip link
     pdm/                  product components: status chips, KPI card, chart frame, states, dialogs
     charts/               Recharts components (sensor, health forecast, alert evidence)
-    views/                one client view per screen
+    views/                one client view per app screen
+    marketing/            public website: header, footer, hero preview, landing sections, demo form
     ui/                   shadcn/ui primitives
   lib/
     types.ts              domain model
     api.ts                API facade — the only thing views call
     mock/                 deterministic mock data (50 assets, 3 sites, 90 days hourly sensor data)
     use-query.ts          tiny data hook (loading / error / silent refetch after mutations)
+    site-config.ts        contact details shown on the website (placeholders — replace before launch)
+    leads.ts              demo-request submit (stub — connect to CRM/email before launch)
 ```
+
+### Before the website goes live
+
+1. Replace the placeholders in `src/lib/site-config.ts` (LINE ID and link, phone, email).
+2. Implement `submitDemoRequest` in `src/lib/leads.ts` (today nothing is sent).
+3. Have the short privacy notice and the consent text reviewed for PDPA.
+4. Confirm the product claims in the copy (integrations, deployment options) in `src/lib/i18n/messages/marketing-*.ts`.
+5. Re-capture the product tour images (`public/marketing/{en,th}/*.webp`) with `node ../tools/cdp.mjs ../tools/task-tour-shots.mjs` when the UI changes.
 
 ### Swapping in a real backend
 
@@ -59,6 +71,17 @@ Mutations currently call `commit()` to trigger a refetch; with a real API, refet
 Eight assets are degrading (3 critical, 5 warning) and two are offline; the rest are healthy.
 Data is seeded, so it's the same on every load; "now" is the time the page was opened.
 Edits (acknowledge, create work order, settings) live in memory and reset on reload.
+
+## Languages (English / ไทย)
+
+Switch from the language menu in the top bar. The choice is saved in the `pdm-locale` cookie; on a first visit the
+browser's `Accept-Language` decides. The server sets `<html lang>` and page titles, so screen readers pick the right voice.
+
+- UI text: `src/lib/i18n/messages/en.ts` and `th.ts` (TypeScript makes sure both have the same keys)
+- Dates and numbers: `src/lib/i18n/format.ts` (Thai uses the Buddhist year, e.g. 5 ต.ค. 2569)
+- Data from the API (asset names, failure modes, recommendations, alert text): `src/lib/mock/l10n.ts`,
+  the same way a real backend would answer per `Accept-Language`
+- Thai typography: Noto Sans Thai fallback, taller line-height and no letter-spacing on Thai text (`globals.css`)
 
 ## Design tokens
 

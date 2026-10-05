@@ -1,9 +1,12 @@
+"use client";
+
 // Shared loading / empty / error states so every screen handles them the same way.
 
 import { CloudOff, RotateCw, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n/provider";
 
 export function EmptyState({
   icon: Icon,
@@ -39,7 +42,7 @@ export function EmptyState({
 }
 
 export function ErrorState({
-  title = "Couldn’t load this data",
+  title,
   error,
   onRetry,
   className,
@@ -51,6 +54,7 @@ export function ErrorState({
   className?: string;
   compact?: boolean;
 }) {
+  const { m } = useI18n();
   return (
     <div
       role="alert"
@@ -61,14 +65,14 @@ export function ErrorState({
       )}
     >
       <CloudOff aria-hidden className="size-6 text-critical" />
-      <p className="font-semibold text-critical-fg">{title}</p>
+      <p className="font-semibold text-critical-fg">{title ?? m.states.errorTitle}</p>
       <p className="max-w-md text-sm text-foreground">
-        {error?.message ?? "Something went wrong."} Check your connection, then try again.
+        {error?.message ?? m.states.errorFallback} {m.states.errorHint}
       </p>
       {onRetry ? (
         <Button variant="outline" size="lg" className="mt-2 bg-card" onClick={onRetry}>
           <RotateCw aria-hidden />
-          Try again
+          {m.common.tryAgain}
         </Button>
       ) : null}
     </div>

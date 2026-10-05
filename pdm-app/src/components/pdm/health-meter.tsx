@@ -1,4 +1,7 @@
+"use client";
+
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n/provider";
 import type { AssetStatus } from "@/lib/types";
 
 const FILL: Record<AssetStatus, string> = {
@@ -22,6 +25,7 @@ export function HealthMeter({
   className?: string;
   showDelta?: boolean;
 }) {
+  const { m } = useI18n();
   return (
     <div className={cn("flex items-center gap-2", className)}>
       <span className="w-7 text-right font-semibold tabular">{score}</span>
@@ -31,9 +35,9 @@ export function HealthMeter({
       {showDelta && delta !== undefined && delta !== 0 ? (
         <span className={cn("text-xs tabular", delta < 0 ? "text-critical-fg" : "text-healthy-fg")}>
           <span aria-hidden>{delta < 0 ? "▼" : "▲"}</span>
-          <span className="sr-only">{delta < 0 ? "down" : "up"}</span>
+          <span className="sr-only">{delta < 0 ? m.health.down : m.health.up}</span>
           {Math.abs(delta)}
-          <span className="sr-only"> points in 7 days</span>
+          <span className="sr-only">{m.health.pointsIn7d}</span>
         </span>
       ) : null}
     </div>

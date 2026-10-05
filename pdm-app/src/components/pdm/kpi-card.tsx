@@ -1,6 +1,9 @@
+"use client";
+
 import Link from "next/link";
 import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n/provider";
 
 export interface KpiDelta {
   /** formatted change, e.g. "+7%" or "−2.4 h" */
@@ -32,6 +35,7 @@ export function KpiCard({
   emphasis?: "critical" | "warning";
   className?: string;
 }) {
+  const { m } = useI18n();
   const DeltaIcon = delta?.direction === "up" ? ArrowUpRight : delta?.direction === "down" ? ArrowDownRight : Minus;
   return (
     <section
@@ -51,18 +55,18 @@ export function KpiCard({
       {delta ? (
         <p
           className={cn(
-            "flex items-center gap-1 text-xs",
+            "flex flex-wrap items-center gap-x-1 text-xs",
             delta.sentiment === "good" && "text-healthy-fg",
             delta.sentiment === "bad" && "text-critical-fg",
             delta.sentiment === "neutral" && "text-muted-foreground",
           )}
         >
-          <DeltaIcon aria-hidden className="size-3.5" />
-          <span className="font-medium tabular">{delta.text}</span>
+          <DeltaIcon aria-hidden className="size-3.5 shrink-0" />
+          <span className="font-medium whitespace-nowrap tabular">{delta.text}</span>
           <span className="text-muted-foreground">
             {delta.comparison}
             <span className="sr-only">
-              {delta.sentiment === "good" ? " (improvement)" : delta.sentiment === "bad" ? " (worse)" : ""}
+              {delta.sentiment === "good" ? m.kpi.improvement : delta.sentiment === "bad" ? m.kpi.worse : ""}
             </span>
           </span>
         </p>
@@ -70,7 +74,7 @@ export function KpiCard({
       {children}
       {href ? (
         <Link href={href} className="mt-auto pt-1 text-xs font-medium text-link underline underline-offset-2 hover:decoration-2">
-          {hrefLabel ?? "View details"}
+          {hrefLabel ?? m.kpi.viewDetails}
         </Link>
       ) : null}
     </section>

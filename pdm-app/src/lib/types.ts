@@ -34,11 +34,21 @@ export interface FailureModeEstimate {
   probability: number; // 0..1
 }
 
+/** Structured values behind a factor's text, so it can be rendered in any language. */
+export type FactorParams =
+  | { kind: "ratio"; sensor: SensorKind; now: number; base: number; unit: string; ratio: number }
+  | { kind: "below"; sensor: SensorKind; now: number; base: number; unit: string; pct: number }
+  | { kind: "temp"; sensor: SensorKind; now: number; delta: number }
+  | { kind: "load"; sensor: SensorKind; now: number; pct: number }
+  | { kind: "anomalies"; recent: number; prior: number }
+  | { kind: "hours"; hours: number; interval: number };
+
 export interface ContributingFactor {
   label: string;
   detail: string;
   weight: number; // 0..1, all factors sum to 1
   sensor?: SensorKind;
+  params: FactorParams;
 }
 
 export interface Prediction {
@@ -140,6 +150,7 @@ export interface Alert {
   description: string;
   rule: string;
   sensor?: SensorKind;
+  unit?: string;
   value?: number;
   threshold?: number;
   confidence?: number;
