@@ -1,0 +1,10 @@
+# Dependencies and build output (pdm-app/.gitignore covers the app itself)
+node_modules/
+.next/
+
+# Local Claude Code settings
+.claude/settings.local.json
+
+# OS / editor
+.DS_Store
+Thumbs.db

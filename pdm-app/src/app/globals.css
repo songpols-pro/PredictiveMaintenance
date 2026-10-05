@@ -1,0 +1,286 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * PdM design tokens
+ * -----------------------------------------------------------------------------
+ * One source of truth for color, status, chart, radius, and focus tokens.
+ * Every text/background pair below was checked with a WCAG 2.2 contrast script:
+ * text >= 4.5:1, borders / icons / focus rings / chart marks >= 3:1.
+ * Token names are 1:1 with the planned Figma variable collections
+ * (color/*, status/*, chart/*, radius/*) so they can be pushed to Figma later.
+ */
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-geist-sans);
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-link: var(--link);
+  --color-text-secondary: var(--text-secondary);
+  --color-selected: var(--selected);
+
+  /* Status palette: solid (icons, marks, bars), fg (text), bg (tinted fills), border */
+  --color-critical: var(--status-critical);
+  --color-critical-fg: var(--status-critical-fg);
+  --color-critical-bg: var(--status-critical-bg);
+  --color-critical-border: var(--status-critical-border);
+  --color-on-critical: var(--status-critical-on);
+  --color-warning: var(--status-warning);
+  --color-warning-fg: var(--status-warning-fg);
+  --color-warning-bg: var(--status-warning-bg);
+  --color-warning-border: var(--status-warning-border);
+  --color-healthy: var(--status-healthy);
+  --color-healthy-fg: var(--status-healthy-fg);
+  --color-healthy-bg: var(--status-healthy-bg);
+  --color-healthy-border: var(--status-healthy-border);
+  --color-offline: var(--status-offline);
+  --color-offline-fg: var(--status-offline-fg);
+  --color-offline-bg: var(--status-offline-bg);
+  --color-offline-border: var(--status-offline-border);
+  --color-info: var(--status-info);
+  --color-info-fg: var(--status-info-fg);
+  --color-info-bg: var(--status-info-bg);
+  --color-info-border: var(--status-info-border);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-grid: var(--chart-grid);
+  --color-chart-axis: var(--chart-axis);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  color-scheme: light;
+  --radius: 0.5rem;
+
+  /* Surfaces */
+  --background: #f5f7fa; /* color/surface/page */
+  --card: #ffffff; /* color/surface/raised */
+  --popover: #ffffff;
+  --muted: #f0f3f7; /* color/surface/sunken (table header, inset) */
+  --accent: #e4e8ee; /* color/surface/hover */
+  --secondary: #f0f3f7;
+  --selected: #eaf1fe; /* color/surface/selected */
+  --sidebar: #ffffff;
+
+  /* Text */
+  --foreground: #0f1720; /* color/text/primary   18.1:1 on raised */
+  --card-foreground: #0f1720;
+  --popover-foreground: #0f1720;
+  --secondary-foreground: #0f1720;
+  --accent-foreground: #0f1720;
+  --text-secondary: #475162; /* color/text/secondary 8.0:1 */
+  --muted-foreground: #586474; /* color/text/muted >= 4.6:1 on all surfaces */
+  --link: #1d5bd8; /* color/text/link 5.9:1 */
+
+  /* Lines */
+  --border: #dde2e8; /* color/border/subtle (decorative dividers) */
+  --input: #768296; /* color/border/control >= 3.5:1 (inputs, checkboxes) */
+  --ring: #1d5bd8; /* color/focus >= 5.5:1 */
+
+  /* Brand action */
+  --primary: #1d5bd8;
+  --primary-hover: #174bb5;
+  --primary-foreground: #ffffff; /* 5.9:1 on primary, 7.8:1 on hover */
+  --destructive: #c42b2b;
+
+  /* Status - solid >= 3:1 as icon/mark; fg >= 4.5:1 on bg and on raised */
+  --status-critical: #c42b2b;
+  --status-critical-fg: #a51d1d;
+  --status-critical-bg: #fdeeee;
+  --status-critical-border: #f3c4c4;
+  --status-critical-on: #ffffff; /* text on solid critical, 5.6:1 */
+  --status-warning: #b86200;
+  --status-warning-fg: #8a4a00;
+  --status-warning-bg: #fff4e0;
+  --status-warning-border: #f3d29a;
+  --status-healthy: #1e7f3c;
+  --status-healthy-fg: #17652f;
+  --status-healthy-bg: #e9f6ee;
+  --status-healthy-border: #b5dec2;
+  --status-offline: #6b7480;
+  --status-offline-fg: #4f5866;
+  --status-offline-bg: #eef0f3;
+  --status-offline-border: #cfd4db;
+  --status-info: #1d5bd8;
+  --status-info-fg: #1a4fbd;
+  --status-info-bg: #eaf1fe;
+  --status-info-border: #bcd0f7;
+
+  /* Charts (single-series slot 1 from the validated categorical palette) */
+  --chart-1: #2a78d6; /* 4.4:1 on raised */
+  --chart-band: rgb(42 120 214 / 0.16);
+  --chart-grid: #e6e9ee;
+  --chart-axis: #768296;
+
+  --sidebar-foreground: #0f1720;
+  --sidebar-border: #dde2e8;
+  --sidebar-accent: #e4e8ee;
+  --sidebar-accent-foreground: #0f1720;
+  --sidebar-primary: #1d5bd8;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-ring: #1d5bd8;
+
+  --topbar-height: 3.5rem;
+}
+
+.dark {
+  color-scheme: dark;
+
+  --background: #0d1117;
+  --card: #151b24;
+  --popover: #151b24;
+  --muted: #1c2430;
+  --accent: #263040;
+  --secondary: #1c2430;
+  --selected: #15284a;
+  --sidebar: #11161e;
+
+  --foreground: #e8ecf1;
+  --card-foreground: #e8ecf1;
+  --popover-foreground: #e8ecf1;
+  --secondary-foreground: #e8ecf1;
+  --accent-foreground: #e8ecf1;
+  --text-secondary: #b4bdc9;
+  --muted-foreground: #949fad;
+  --link: #8fb4ff;
+
+  --border: #2b3442;
+  --input: #6b7686;
+  --ring: #6ea0ff;
+
+  --primary: #2f6be0;
+  --primary-hover: #2559c4;
+  --primary-foreground: #ffffff;
+  --destructive: #f06a6a;
+
+  --status-critical: #f06a6a;
+  --status-critical-fg: #ff9b9b;
+  --status-critical-bg: #3b1a1d;
+  --status-critical-border: #6b2a2f;
+  --status-critical-on: #1a0b0c;
+  --status-warning: #e89a2c;
+  --status-warning-fg: #ffc06b;
+  --status-warning-bg: #3a2a12;
+  --status-warning-border: #6a4a1c;
+  --status-healthy: #3fbf6e;
+  --status-healthy-fg: #7fdc9f;
+  --status-healthy-bg: #13301f;
+  --status-healthy-border: #22573a;
+  --status-offline: #8c96a4;
+  --status-offline-fg: #b4bdc9;
+  --status-offline-bg: #222a35;
+  --status-offline-border: #3a4452;
+  --status-info: #5b93f5;
+  --status-info-fg: #9cc0ff;
+  --status-info-bg: #15284a;
+  --status-info-border: #2a4a80;
+
+  --chart-1: #3987e5;
+  --chart-band: rgb(57 135 229 / 0.22);
+  --chart-grid: #232b37;
+  --chart-axis: #6b7686;
+
+  --sidebar-foreground: #e8ecf1;
+  --sidebar-border: #2b3442;
+  --sidebar-accent: #263040;
+  --sidebar-accent-foreground: #e8ecf1;
+  --sidebar-primary: #2f6be0;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-ring: #6ea0ff;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    @apply font-sans;
+    /* Keep focused elements clear of the sticky top bar (WCAG 2.4.11) */
+    scroll-padding-top: calc(var(--topbar-height) + 1rem);
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-size: 0.875rem;
+    line-height: 1.45;
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/*
+ * Visible focus everywhere. Unlayered so it wins over component `outline-none`
+ * utilities; 2px solid ring at >= 3:1 against every surface (WCAG 2.4.7 / 2.4.13).
+ */
+:focus-visible {
+  outline: 2px solid var(--ring) !important;
+  outline-offset: 2px;
+}
+
+/* Recharts' keyboard layer focuses the SVG wrapper; give it the same ring. */
+.recharts-wrapper:focus-visible,
+.recharts-surface:focus-visible {
+  outline: 2px solid var(--ring) !important;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media (forced-colors: active) {
+  .status-dot,
+  .health-bar-fill {
+    forced-color-adjust: none;
+  }
+}

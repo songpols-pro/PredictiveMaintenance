@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "pdm-app",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "pdm-app", "run", "dev"],
+      "port": 3000
+    }
+  ]
+}
