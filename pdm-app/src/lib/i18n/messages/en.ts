@@ -1,6 +1,7 @@
 // English UI strings. th.ts must provide the same keys (enforced by the Messages type).
 import type { AlertSource, AlertStatus, AssetStatus, AssetType, Channel, MaintenanceType, Priority, Role, SensorKind, Severity, SimulationMode, TimeRange, WorkOrderStatus } from "@/lib/types";
 
+import { hvacEn } from "./hvac-en";
 import { marketingEn } from "./marketing-en";
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
@@ -43,6 +44,8 @@ export const en = {
     workOrders: "Work orders",
     settings: "Settings",
     openSuffix: " open",
+    systems: "Building systems",
+    chillerPlant: "Chiller Plant",
   },
   topbar: {
     searchLabel: "Search assets by name or ID",
@@ -600,6 +603,7 @@ export const en = {
     inviteToast: (email: string) => `Invitation sent to ${email}`,
   },
   marketing: marketingEn,
+  hvac: hvacEn,
   notFound: {
     title: "Page not found",
     description: "The page you’re looking for doesn’t exist or has moved.",

@@ -148,6 +148,13 @@
 
   /* Charts (single-series slot 1 from the validated categorical palette) */
   --chart-1: #2a78d6; /* 4.4:1 on raised */
+  /* Further categorical slots for multi-series charts (chiller plant trends). Slots 3-5 are below
+     3:1 on white, so those charts always carry a legend with values and a table view. */
+  --chart-2: #eb6834;
+  --chart-3: #1baf7a;
+  --chart-4: #eda100;
+  --chart-5: #e87ba4;
+  --chart-6: #4a3aa7;
   --chart-band: rgb(42 120 214 / 0.16);
   --chart-grid: #e6e9ee;
   --chart-axis: #768296;
@@ -216,6 +223,11 @@
   --status-info-border: #2a4a80;
 
   --chart-1: #3987e5;
+  --chart-2: #d95926;
+  --chart-3: #199e70;
+  --chart-4: #c98500;
+  --chart-5: #d55181;
+  --chart-6: #9085e9;
   --chart-band: rgb(57 135 229 / 0.22);
   --chart-grid: #232b37;
   --chart-axis: #6b7686;
@@ -227,6 +239,17 @@
   --sidebar-primary: #2f6be0;
   --sidebar-primary-foreground: #ffffff;
   --sidebar-ring: #6ea0ff;
+}
+
+/* Chilled-water header pipe: moving dashes while water flows (static under reduced motion). */
+@keyframes hvac-flow {
+  to {
+    background-position: 24px 0;
+  }
+}
+.hvac-flow {
+  background-image: repeating-linear-gradient(90deg, transparent 0 12px, color-mix(in oklch, var(--card) 60%, transparent) 12px 18px, transparent 18px 24px);
+  animation: hvac-flow 1.2s linear infinite;
 }
 
 @layer base {

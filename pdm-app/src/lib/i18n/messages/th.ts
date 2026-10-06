@@ -1,5 +1,6 @@
 // ข้อความภาษาไทย ต้องมี key ครบเท่ากับ en.ts (ตรวจด้วย type Messages)
 import type { Messages } from "./en";
+import { hvacTh } from "./hvac-th";
 import { marketingTh } from "./marketing-th";
 
 export const th: Messages = {
@@ -40,6 +41,8 @@ export const th: Messages = {
     workOrders: "ใบสั่งงาน",
     settings: "ตั้งค่า",
     openSuffix: " รายการที่เปิดอยู่",
+    systems: "ระบบอาคาร",
+    chillerPlant: "Chiller Plant",
   },
   topbar: {
     searchLabel: "ค้นหาเครื่องจักรด้วยชื่อหรือรหัส",
@@ -595,6 +598,7 @@ export const th: Messages = {
     inviteToast: (email) => `ส่งคำเชิญไปที่ ${email} แล้ว`,
   },
   marketing: marketingTh,
+  hvac: hvacTh,
   notFound: {
     title: "ไม่พบหน้านี้",
     description: "ไม่มีหน้าที่คุณต้องการ หรือหน้านั้นถูกย้ายไปแล้ว",

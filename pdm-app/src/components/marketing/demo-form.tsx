@@ -145,7 +145,7 @@ export function DemoForm() {
         </FormField>
         <FormField id={id("machines")} label={c.machines} required error={errors.machines}>
           <Select value={values.machines} onValueChange={(v) => setValues((s) => ({ ...s, machines: v }))}>
-            <SelectTrigger id={id("machines")} className="h-10 w-full" {...fieldProps("machines")}>
+            <SelectTrigger id={id("machines")} className="data-[size=default]:h-10 w-full" {...fieldProps("machines")}>
               <SelectValue placeholder={c.machinesPlaceholder} />
             </SelectTrigger>
             <SelectContent>

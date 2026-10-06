@@ -25,6 +25,11 @@ Deploy: Firebase App Hosting, with the demo-request form saved to Cloud Firestor
 | `/app/alerts` | Alert triage: status/severity filters, list + detail panel, acknowledge, assign, snooze, resolve, create work order, evidence chart, timeline |
 | `/app/work-orders` | Board (Open / In progress / Done) with drag-and-drop **and** a "Move to" menu, detail sheet, parts availability |
 | `/app/settings` | Alert thresholds (validated), notification rules, users and roles + permission matrix |
+| `/hvac` | **Chiller plant BMS** (customer mock-up): KPI strip, plant diagram (4 AHU + OAU, 3 chillers, 2 pumps, control kit) with live readings every 5 s, device details with a predictive-maintenance panel |
+| `/hvac/power` | Power meter tree (plant total → 3 meters), meter details (V, A, kW, kVAR, PF, kWh), today vs yesterday chart |
+| `/hvac/trend` | Up to 6 points, time range, sampling, saved presets, one chart per unit, table view, CSV |
+| `/hvac/report` | Device list → data table with summary and daily energy, CSV |
+| `/hvac/alarms`, `/hvac/alarms/logs` | Active alarms with acknowledge; alarm history for a period, CSV |
 
 Every app screen has loading, empty and error states. Preview them with **Demo** in the top bar (Live data / Loading / Empty / Error).
 
@@ -39,12 +44,14 @@ src/
     charts/               Recharts components (sensor, health forecast, alert evidence)
     views/                one client view per app screen
     marketing/            public website: header, footer, hero preview, landing sections, demo form
+    hvac/                 chiller plant module: shell, plant diagram, pictograms, device / meter dialogs, trend, report, alarms
     ui/                   shadcn/ui primitives
   lib/
     types.ts              domain model
     api.ts                API facade — the only thing views call
     mock/                 deterministic mock data (50 assets, 3 sites, 90 days hourly sensor data)
     use-query.ts          tiny data hook (loading / error / silent refetch after mutations)
+    hvac/                 chiller plant: model + branding slots, deterministic simulation, points, alarm rules, live store, CSV
     site-config.ts        contact details shown on the website (placeholders — replace before launch)
     demo-request.ts       demo-request fields and validation, shared by the form and the server
     leads.ts              server action: stores demo requests in Firestore (+ optional email to sales)
