@@ -12,11 +12,32 @@ runConfig:
   cpu: 1
   memoryMiB: 512
 
-# Uncomment to email every demo request to the sales team (comma-separated addresses).
-# It needs the "Trigger Email from Firestore" extension, set up on the "mail" collection
-# (see README > Deploy to Firebase). Without it, requests are only stored in Firestore.
-# env:
-#   - variable: LEADS_NOTIFY_EMAIL
-#     value: sales@your-company.co.th
-#     availability:
-#       - RUNTIME
+env:
+  # /hvac chiller plant module: public Firebase web config of this project (web app "pop"). Public by
+  # design; access is decided by sign-in and firestore.rules. Inlined into the browser bundle at build.
+  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
+    value: AIzaSyBphM65QpqA2dc47qJuPPLDT9Vw3wwU6Vo
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+    value: pdm-app-87193.firebaseapp.com
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    value: pdm-app-87193
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_APP_ID
+    value: 1:154006201612:web:f0accdb209bb1f02361529
+    availability: [BUILD, RUNTIME]
+
+  # History (TimescaleDB) for trends, reports, energy and the alarm log. A secret in Secret Manager:
+  #   firebase apphosting:secrets:set DATABASE_URL     (paste the connection string; grants the backend access)
+  # Until it is set, live values and alarms work and the history screens report "couldn't load".
+  # - variable: DATABASE_URL
+  #   secret: DATABASE_URL
+  #   availability: [RUNTIME]
+
+  # Uncomment to email every demo request to the sales team (comma-separated addresses).
+  # It needs the "Trigger Email from Firestore" extension, set up on the "mail" collection
+  # (see README > Deploy to Firebase). Without it, requests are only stored in Firestore.
+  # - variable: LEADS_NOTIFY_EMAIL
+  #   value: sales@your-company.co.th
+  #   availability: [RUNTIME]

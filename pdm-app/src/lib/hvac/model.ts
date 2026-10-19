@@ -61,6 +61,8 @@ export const PLANT = {
 /**
  * Branding slots from the mock-up ("Can add owner logo", "Can add any logo", "Designed by").
  * Logos are left empty in the repository; drop files into /public/hvac and set the paths.
+ * With live data, a project's registry can set its own owner logo, which replaces ownerLogo here
+ * (`ownerLogo` of the registry, lib/access/registry.ts).
  */
 export const HVAC_SITE = {
   ownerLogo: null as string | null,
@@ -68,12 +70,18 @@ export const HVAC_SITE = {
   designedBy: null as string | null,
 };
 
+// Values a device does not report are NaN (numbers) or null (on/off), so screens can leave them out.
+
 export interface CircuitSnap {
   suction: number;
   discharge: number;
   coilOut: number;
   lowP: number;
   highP: number;
+  /** Refrigerant temperature at the water-side heat exchanger (modular chillers). */
+  innerCoil: number;
+  /** Outdoor (air-side) coil fin temperature. */
+  fin: number;
 }
 
 export interface ChillerSnap {
@@ -83,14 +91,41 @@ export interface ChillerSnap {
   alarm: boolean;
   comp: [boolean, boolean];
   loadPct: number;
+  /** loadPct is the share of compressors running: the chiller reports no load of its own. */
+  loadFromStages: boolean;
+  /** 0 while stopped; NaN when it cannot be computed (no flow reading). */
   tons: number;
+  /** Power: the chiller's own power meters (registry meterFor) when it has any, else its own reading. */
   kw: number;
+  /** The meters kW comes from; empty when it is the chiller's own reading. */
+  kwMeters: string[];
+  /** null while not running; NaN when it cannot be computed (no flow or power reading). */
   kwPerTon: number | null;
   chwIn: number;
   chwOut: number;
+  /** 0 while stopped; NaN when the chiller does not measure flow. */
   flow: number;
   ambient: number;
   circuits: [CircuitSnap, CircuitSnap];
+  /** Chilled-water outlet set point. */
+  setpoint: number;
+  /**
+   * Operating mode code of the chiller's controller (Carrier 30RAM: 1 cooling, 2 heating, 4 water pump
+   * only, 8 heating + hot water, 16 cooling + heat recovery).
+   */
+  modeCode: number;
+  /** Each compressor of the tandem circuits: 1A, 1B, 2A, 2B. */
+  compressors: [boolean | null, boolean | null, boolean | null, boolean | null];
+  /** Condenser fan of circuit 1 and 2. */
+  fans: [boolean | null, boolean | null];
+  defrost: boolean | null;
+  /** Freeze-protection (antifreeze) temperature. */
+  antifreeze: number;
+  /** Electronic expansion valve openings EXV 1–4, in steps (0–480). */
+  exv: [number, number, number, number];
+  /** Common header temperatures, reported by the master module of a modular chiller. */
+  headerIn: number;
+  headerOut: number;
 }
 
 export interface AirSnap {
@@ -122,7 +157,8 @@ export interface PanelSnap {
 
 export interface MeterSnap {
   id: string;
-  chillerId: string;
+  /** The chiller this meter measures, if any. */
+  chillerId: string | null;
   state: RunState;
   vLN: [number, number, number];
   vLL: [number, number, number];
@@ -143,11 +179,13 @@ export interface PlantSnap {
   flow: number;
   tons: number;
   kw: number;
+  /** null while no chiller runs; NaN when it cannot be computed (no flow or power reading). */
   kwPerTon: number | null;
   chillers: ChillerSnap[];
   air: AirSnap[];
   pumps: PumpSnap[];
-  panel: PanelSnap;
+  /** Control panels (none, one or several, as the plant has them). */
+  panels: PanelSnap[];
   meters: MeterSnap[];
 }
 
@@ -157,7 +195,8 @@ export type AlarmSeverity = "critical" | "warning";
 export interface HvacAlarm {
   id: string;
   deviceId: string;
-  code: AlarmCode;
+  /** A built-in code (simulation, threshold rules, communication) or a fault code of a register profile. */
+  code: AlarmCode | (string & {});
   severity: AlarmSeverity;
   start: number;
   /** null while the alarm is still active. */
@@ -165,6 +204,11 @@ export interface HvacAlarm {
   /** Reading that tripped a threshold alarm, with its unit. */
   value?: number;
   unit?: string;
+  /** Names that came with the alarm (fault bits of a register profile); built-in codes use the messages. */
+  label?: { en: string; th: string };
+  /** Live data: when and by whom a fault alarm was acknowledged (stored, so every screen sees it). */
+  ackedAt?: number;
+  ackedBy?: string;
 }
 
 /** Predictive-maintenance finding attached to a device (the PdM Monitor layer on top of the BMS). */

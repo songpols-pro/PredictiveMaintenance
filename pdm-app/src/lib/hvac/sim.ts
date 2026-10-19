@@ -152,6 +152,8 @@ const KW_MEAN: Record<string, number> = { "PM-CH-1": 82, "PM-CH-2": 86, "PM-CH-3
 const LEAD_ORDER = ["CH-1", "CH-2", "CH-3"];
 /** CH-2's condenser coil is fouling: same load, more kW (what the PdM layer is expected to catch). */
 const FOULING: Record<string, number> = { "CH-1": 0, "CH-2": 0.14, "CH-3": 0.02 };
+/** Coil temperatures that only modular chillers report. */
+const NOT_MODULAR = { innerCoil: Number.NaN, fin: Number.NaN };
 
 export function plantAt(t: number): PlantSnap {
   const events = scriptedEvents(t, t).filter((e) => e.start <= t && e.end > t);
@@ -191,6 +193,7 @@ export function plantAt(t: number): PlantSnap {
             coilOut: round(ambient + 7 + 0.6 * noise(`${id}c${n}`, t, 30 * MIN)),
             lowP: round(8.6 + 0.1 * (supply - 7) + 0.25 * noise(`${id}lp${n}`, t, 30 * MIN)),
             highP: round(26 + 0.55 * (ambient - 30) + 2 * loadPct + 0.5 * noise(`${id}hp${n}`, t, 30 * MIN) + (FOULING[id] > 0.1 ? 1.4 : 0)),
+            ...NOT_MODULAR,
           }
         : {
             suction: round(ambient - 1),
@@ -198,6 +201,7 @@ export function plantAt(t: number): PlantSnap {
             coilOut: round(ambient),
             lowP: round(17.2 + 0.2 * noise(`${id}eq${n}`, t, HOUR)),
             highP: round(17.4 + 0.2 * noise(`${id}eq${n}`, t, HOUR)),
+            ...NOT_MODULAR,
           };
     chillers.push({
       id,
@@ -206,14 +210,26 @@ export function plantAt(t: number): PlantSnap {
       alarm: fault,
       comp: [on, comp2],
       loadPct: round(loadPct * 100, 0),
+      loadFromStages: false,
       tons: round(chTons, 1),
       kw: round(kw, 1),
+      kwMeters: [],
       kwPerTon: kwPerTon ? round(kwPerTon, 2) : null,
       chwIn: 0, // filled in below, once the plant return temperature is known
       chwOut: on ? round(supply + 0.1 * noise(`${id}out`, t, 20 * MIN)) : 0,
       flow: round(chFlow, 1),
       ambient,
       circuits: [circuit(1, on), circuit(2, comp2)],
+      setpoint: PLANT.supplySetpoint,
+      // The mock-up's chillers are not modular units: none of their extra points.
+      modeCode: Number.NaN,
+      compressors: [null, null, null, null],
+      fans: [null, null],
+      defrost: null,
+      antifreeze: Number.NaN,
+      exv: [Number.NaN, Number.NaN, Number.NaN, Number.NaN],
+      headerIn: Number.NaN,
+      headerOut: Number.NaN,
     });
   }
 
@@ -313,7 +329,7 @@ export function plantAt(t: number): PlantSnap {
     chillers,
     air,
     pumps,
-    panel,
+    panels: [panel],
     meters,
   };
 }

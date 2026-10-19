@@ -3,8 +3,8 @@
 // Report: device list on the right (as in the mock-up), a period and sampling, then a summary,
 // the data table and a CSV download. "Energy" adds a daily kWh table per power meter.
 
-import { useId, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Download, FileSpreadsheet } from "lucide-react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { ChevronDown, ChevronLeft, ChevronRight, Download, FileSpreadsheet, Info, Loader2 } from "lucide-react";
 import { EmptyState } from "@/components/pdm/states";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -14,13 +14,30 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useI18n } from "@/lib/i18n/provider";
 import { csvTime, downloadCsv, fromLocalInput, toLocalInput } from "@/lib/hvac/csv";
-import { METERS } from "@/lib/hvac/model";
-import { DAY, MIN, dayStart, energyBetween } from "@/lib/hvac/sim";
-import { POINT_GROUPS, SAMPLING_MINUTES, effectiveStep, pointById, pointsOf, sampleRows, type PointDef, type SampleRow } from "@/lib/hvac/points";
+import { EMPTY_LAYOUT } from "@/lib/hvac/layout";
+import { useLayout, useLive } from "@/lib/hvac/live";
+import { useHvacAccount } from "@/lib/hvac/account";
+import { loadEnergy, loadRows } from "@/lib/hvac/history";
+import { DAY, MIN, dayStart } from "@/lib/hvac/sim";
+import { MAX_HISTORY_POINTS, SAMPLING_MINUTES, effectiveStep, offeredPointsOf, pointById, pointGroups, type PointDef, type SampleRow } from "@/lib/hvac/points";
 import { PageTitle, deviceLabel } from "./common";
 import { pointLabel } from "./trend";
 
 const MAX_DAYS = 31;
+
+/** A category of the device list: its name, then how many are chosen in it and whether it is open. */
+const CATEGORY = "flex min-h-10 cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 font-medium [&::-webkit-details-marker]:hidden";
+
+/** Right side of a list heading: the number chosen inside, and a chevron that turns when it opens. */
+function Opens({ group, count }: { group: "cat" | "dev"; count: number }) {
+  const { m } = useI18n();
+  return (
+    <span className="flex shrink-0 items-center gap-2">
+      {count ? <span className="rounded-full bg-primary px-2 text-xs font-semibold text-primary-foreground tabular">{m.hvac.report.selected(count)}</span> : null}
+      <ChevronDown aria-hidden className={group === "cat" ? "size-4 transition-transform group-open/cat:rotate-180 motion-reduce:transition-none" : "size-4 transition-transform group-open/dev:rotate-180 motion-reduce:transition-none"} />
+    </span>
+  );
+}
 const PAGE = 50;
 
 interface Result {
@@ -29,7 +46,8 @@ interface Result {
   step: number;
   defs: PointDef[];
   rows: SampleRow[];
-  energy: { day: number; kwh: Record<string, number> }[] | null;
+  /** kWh per meter and day; null where a counter reading is missing. */
+  energy: { day: number; kwh: Record<string, number | null> }[] | null;
 }
 
 function stats(rows: SampleRow[], col: number) {
@@ -51,12 +69,24 @@ export function ReportView() {
   const [step, setStep] = useState(60);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
+  const resultsRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (result) resultsRef.current?.focus();
+  }, [result]);
   const [page, setPage] = useState(0);
+  const [working, setWorking] = useState(false);
+  const project = useHvacAccount()?.project ?? null;
+  const layout = useLayout() ?? EMPTY_LAYOUT;
+  const snap = useLive()?.snap;
+  const METERS = layout.meters;
 
-  const toggle = (pid: string, on: boolean) => setSelected((s) => (on ? [...s, pid] : s.filter((x) => x !== pid)));
+  // The history API answers at most MAX_HISTORY_POINTS points per request: further boxes are disabled.
+  const full = selected.length >= MAX_HISTORY_POINTS;
+  const toggle = (pid: string, on: boolean) => setSelected((s) => (on ? [...s, pid].slice(0, MAX_HISTORY_POINTS) : s.filter((x) => x !== pid)));
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (working) return;
     const from = fromLocalInput(fromInput);
     const to = fromLocalInput(toInput);
     if (from === null || to === null || to <= from) {
@@ -69,20 +99,24 @@ export function ReportView() {
     }
     setError(null);
     const end = Math.min(to, Date.now());
-    const defs = selected.map(pointById).filter((p): p is PointDef => Boolean(p));
+    const defs = selected.map((id) => pointById(id, layout)).filter((p): p is PointDef => Boolean(p));
     const s = effectiveStep(from, end, step);
-    const rows = defs.length ? sampleRows(defs.map((d) => d.id), from, end, s) : [];
-    let daily: Result["energy"] = null;
-    if (energy) {
-      daily = [];
-      for (let d = dayStart(from); d < end; d += DAY) {
-        const a = Math.max(d, from);
-        const b = Math.min(d + DAY, end);
-        daily.push({ day: d, kwh: Object.fromEntries(METERS.map((mt) => [mt.id, energyBetween(mt.id, a, b)])) });
-      }
+    setWorking(true);
+    try {
+      const days: number[] = [];
+      for (let d = dayStart(from); d < end; d += DAY) days.push(d);
+      const [rows, kwh] = await Promise.all([
+        defs.length ? loadRows(project, defs.map((d) => d.id), from, end, s) : Promise.resolve([]),
+        energy ? loadEnergy(project, METERS.map((mt) => mt.id), days.map((d): [number, number] => [Math.max(d, from), Math.min(d + DAY, end)])) : Promise.resolve(null),
+      ]);
+      const daily: Result["energy"] = kwh ? days.map((day, i) => ({ day, kwh: Object.fromEntries(METERS.map((mt) => [mt.id, kwh[mt.id][i]])) })) : null;
+      setResult({ from, to: end, step: s, defs, rows, energy: daily });
+      setPage(0);
+    } catch {
+      setError(m.states.errorTitle);
+    } finally {
+      setWorking(false);
     }
-    setResult({ from, to: end, step: s, defs, rows, energy: daily });
-    setPage(0);
   }
 
   const pages = result ? Math.max(1, Math.ceil(result.rows.length / PAGE)) : 1;
@@ -98,10 +132,11 @@ export function ReportView() {
     }
     if (result.energy) {
       if (out.length) out.push([]);
-      out.push([t.day, ...METERS.map((mt) => `${mt.label} (kWh)`), `${t.total} (kWh)`]);
+      out.push([t.day, ...METERS.map((mt) => `${mt.label ?? mt.name} (kWh)`), `${t.total} (kWh)`]);
       for (const d of result.energy) {
-        const vals = METERS.map((mt) => Math.round(d.kwh[mt.id]));
-        out.push([csvTime(d.day).slice(0, 10), ...vals, vals.reduce((a, b) => a + b, 0)]);
+        const vals = METERS.map((mt) => d.kwh[mt.id]);
+        const known = vals.filter((v): v is number => v !== null);
+        out.push([csvTime(d.day).slice(0, 10), ...vals.map((v) => (v === null ? null : Math.round(v))), known.length === vals.length ? Math.round(known.reduce((a, b) => a + b, 0)) : null]);
       }
     }
     downloadCsv(`report-${csvTime(result.from).slice(0, 10)}-${csvTime(result.to).slice(0, 10)}.csv`, out);
@@ -117,26 +152,33 @@ export function ReportView() {
               {t.devices}
             </h2>
             <div className="flex flex-col gap-1.5">
-              {POINT_GROUPS.map((g) => (
-                <details key={g.group} className="rounded-md bg-muted">
-                  <summary className="flex min-h-10 cursor-pointer items-center justify-center px-3 py-2 font-medium">{t.categories[g.group]}</summary>
+              {pointGroups(layout).map((g) => (
+                <details key={g.group} className="group/cat rounded-md bg-muted">
+                  <summary className={CATEGORY}>
+                    <span>{t.categories[g.group]}</span>
+                    <Opens group="cat" count={selected.filter((pid) => g.devices.includes(pid.slice(0, pid.lastIndexOf(".")))).length} />
+                  </summary>
                   <div className="flex flex-col gap-1.5 px-2 pb-2">
                     {g.devices.map((deviceId) => {
-                      const n = pointsOf(deviceId).filter((p) => selected.includes(p.id)).length;
+                      // Only what the device reports; a point already selected stays listed so it can be removed.
+                      const pts = offeredPointsOf(deviceId, layout, snap, selected);
+                      if (pts.length === 0) return null;
+                      const n = pts.filter((p) => selected.includes(p.id)).length;
                       return (
-                        <details key={deviceId} className="rounded-md bg-card" open={g.devices.length === 1}>
-                          <summary className="flex min-h-9 cursor-pointer items-center justify-between gap-2 px-3 py-1.5 text-sm font-semibold">
-                            {deviceLabel(deviceId, m)}
-                            {n ? <span className="text-xs font-normal text-text-secondary">{t.selected(n)}</span> : null}
+                        <details key={deviceId} className="group/dev rounded-md bg-card" open={g.devices.length === 1}>
+                          <summary className="flex min-h-9 cursor-pointer list-none items-center justify-between gap-2 px-3 py-1.5 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+                            <span>{deviceLabel(deviceId, m)}</span>
+                            <Opens group="dev" count={n} />
                           </summary>
                           <fieldset className="px-3 pb-2">
                             <legend className="sr-only">{deviceLabel(deviceId, m)}</legend>
                             <ul className="grid gap-1">
-                              {pointsOf(deviceId).map((p) => {
+                              {pts.map((p) => {
                                 const cid = id(p.id);
+                                const checked = selected.includes(p.id);
                                 return (
                                   <li key={p.id} className="flex min-h-7 items-center gap-2">
-                                    <Checkbox id={cid} checked={selected.includes(p.id)} onCheckedChange={(v) => toggle(p.id, v === true)} />
+                                    <Checkbox id={cid} checked={checked} disabled={!checked && full} onCheckedChange={(v) => toggle(p.id, v === true)} />
                                     <Label htmlFor={cid} className="text-sm font-normal">
                                       {m.hvac.points[p.key]}
                                       {p.unit ? <span className="text-muted-foreground"> ({p.unit})</span> : null}
@@ -152,8 +194,11 @@ export function ReportView() {
                   </div>
                 </details>
               ))}
-              <details className="rounded-md bg-muted">
-                <summary className="flex min-h-10 cursor-pointer items-center justify-center px-3 py-2 font-medium">{t.categories.energy}</summary>
+              <details className="group/cat rounded-md bg-muted">
+                <summary className={CATEGORY}>
+                  <span>{t.categories.energy}</span>
+                  <Opens group="cat" count={energy ? 1 : 0} />
+                </summary>
                 <div className="flex min-h-7 items-center gap-2 px-3 pb-3">
                   <Checkbox id={id("energy")} checked={energy} onCheckedChange={(v) => setEnergy(v === true)} />
                   <Label htmlFor={id("energy")} className="text-sm font-normal">
@@ -177,6 +222,12 @@ export function ReportView() {
                 </button>
               ) : null}
             </div>
+            {full ? (
+              <p role="status" className="mt-2 flex items-start gap-2 rounded-md border border-info-border bg-info-bg px-3 py-2 text-sm text-info-fg">
+                <Info aria-hidden className="mt-0.5 size-4 shrink-0" />
+                {t.maxReached(MAX_HISTORY_POINTS)}
+              </p>
+            ) : null}
           </div>
           <fieldset className="flex flex-col gap-3 border-t pt-3">
             <legend className="sr-only">{t.date}</legend>
@@ -211,9 +262,13 @@ export function ReportView() {
                 {error}
               </p>
             ) : null}
-            <Button type="submit" className="h-11 text-base" disabled={count === 0}>
+            <Button type="submit" className="h-11 text-base" disabled={count === 0} aria-disabled={working || undefined}>
+              {working ? <Loader2 aria-hidden className="animate-spin motion-reduce:animate-none" /> : null}
               {t.submit}
             </Button>
+            <p role="status" className="sr-only">
+              {working ? m.hvac.shell.loading : ""}
+            </p>
           </fieldset>
         </form>
 
@@ -223,7 +278,7 @@ export function ReportView() {
           ) : (
             <>
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm text-text-secondary" aria-live="polite">
+                <p ref={resultsRef} tabIndex={-1} className="scroll-mt-20 text-sm text-text-secondary outline-none" aria-live="polite">
                   {t.period(f.dateTime(result.from), f.dateTime(result.to))} · {m.hvac.trend.minutes(Math.round(result.step / MIN))} · {t.rows(result.rows.length)}
                 </p>
                 <Button variant="outline" size="sm" onClick={download}>
@@ -284,7 +339,7 @@ export function ReportView() {
                           <TableHead scope="col">{t.day}</TableHead>
                           {METERS.map((mt) => (
                             <TableHead key={mt.id} scope="col" className="text-right">
-                              {mt.label}
+                              {mt.label ?? mt.name}
                             </TableHead>
                           ))}
                           <TableHead scope="col" className="text-right">{t.total}</TableHead>
@@ -293,13 +348,14 @@ export function ReportView() {
                       <TableBody>
                         {result.energy.map((d) => {
                           const vals = METERS.map((mt) => d.kwh[mt.id]);
+                          const total = vals.every((v) => v !== null) ? vals.reduce<number>((a, b) => a + (b ?? 0), 0) : null;
                           return (
                             <TableRow key={d.day}>
                               <TableHead scope="row" className="font-medium tabular">{f.date(d.day)}</TableHead>
                               {vals.map((v, i) => (
-                                <TableCell key={METERS[i].id} className="text-right tabular">{f.number(v)}</TableCell>
+                                <TableCell key={METERS[i].id} className="text-right tabular">{v === null ? "—" : f.number(v)}</TableCell>
                               ))}
-                              <TableCell className="text-right font-semibold tabular">{f.number(vals.reduce((a, b) => a + b, 0))}</TableCell>
+                              <TableCell className="text-right font-semibold tabular">{total === null ? "—" : f.number(total)}</TableCell>
                             </TableRow>
                           );
                         })}

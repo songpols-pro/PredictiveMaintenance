@@ -1,0 +1,31 @@
+{
+  "name": "pdm-ingest",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Ingestion service: MQTT (EMQX) → Firestore (latest values) + TimescaleDB (history)",
+  "type": "module",
+  "scripts": {
+    "start": "node --import tsx src/main.ts",
+    "migrate": "node --import tsx src/migrate.ts",
+    "registry": "node --import tsx src/registry.ts",
+    "set-profile": "node --import tsx src/set-profile.ts",
+    "access": "node --import tsx src/access.ts",
+    "org": "node --import tsx src/org.ts",
+    "fetch-ca": "node scripts/fetch-db-ca.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=22.9"
+  },
+  "dependencies": {
+    "firebase-admin": "^14.5.0",
+    "mqtt": "^5.16.0",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/pg": "^8.23.1",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  }
+}

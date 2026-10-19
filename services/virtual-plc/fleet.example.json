@@ -1,0 +1,239 @@
+{
+  "projects": [
+    {
+      "id": "hq-chiller",
+      "name": "HQ chiller plant",
+      "gateways": [
+        {
+          "id": "plc-01",
+          "interval": 60,
+          "simShiftMinutes": 0,
+          "devices": [
+            {
+              "id": "CH-1",
+              "kind": "chiller",
+              "name": "CHILLER-1",
+              "capacityTon": 120,
+              "profile": "carrier-30ram"
+            },
+            {
+              "id": "CH-2",
+              "kind": "chiller",
+              "name": "CHILLER-2",
+              "capacityTon": 120,
+              "profile": "carrier-30ram"
+            },
+            {
+              "id": "CH-3",
+              "kind": "chiller",
+              "name": "CHILLER-3",
+              "capacityTon": 120,
+              "profile": "carrier-30ram"
+            },
+            {
+              "id": "CHP-1",
+              "kind": "pump",
+              "name": "CHP-1",
+              "role": "duty"
+            },
+            {
+              "id": "CHP-2",
+              "kind": "pump",
+              "name": "CHP-2",
+              "role": "standby"
+            },
+            {
+              "id": "AHU-1",
+              "kind": "ahu",
+              "name": "AHU-1"
+            },
+            {
+              "id": "AHU-2",
+              "kind": "ahu",
+              "name": "AHU-2"
+            },
+            {
+              "id": "AHU-3",
+              "kind": "ahu",
+              "name": "AHU-3"
+            },
+            {
+              "id": "AHU-4",
+              "kind": "ahu",
+              "name": "AHU-4"
+            },
+            {
+              "id": "OAU-1",
+              "kind": "oau",
+              "name": "OAU-1"
+            },
+            {
+              "id": "CP-1",
+              "kind": "panel",
+              "name": "Control Kit"
+            },
+            {
+              "id": "PM-CH-1",
+              "kind": "meter",
+              "name": "Power Meter-1",
+              "label": "PM-CH-1",
+              "meterFor": "CH-1"
+            },
+            {
+              "id": "PM-CH-2",
+              "kind": "meter",
+              "name": "Power Meter-2",
+              "label": "PM-CH-2",
+              "meterFor": "CH-2"
+            },
+            {
+              "id": "PM-CH-3",
+              "kind": "meter",
+              "name": "Power Meter-3",
+              "label": "PM-CH-3",
+              "meterFor": "CH-3"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "factory-b",
+      "name": "Factory B chiller plant",
+      "gateways": [
+        {
+          "id": "plc-01",
+          "interval": 60,
+          "devices": [
+            {
+              "id": "CH-1",
+              "kind": "chiller",
+              "name": "CHILLER-1",
+              "capacityTon": 120,
+              "profile": "carrier-30ram"
+            },
+            {
+              "id": "CH-2",
+              "kind": "chiller",
+              "name": "CHILLER-2",
+              "capacityTon": 120,
+              "profile": "carrier-30ram"
+            },
+            {
+              "id": "CH-3",
+              "kind": "chiller",
+              "name": "CHILLER-3",
+              "capacityTon": 120,
+              "profile": "carrier-30ram"
+            },
+            {
+              "id": "CH-4",
+              "kind": "chiller",
+              "name": "CHILLER-4",
+              "capacityTon": 120,
+              "profile": "carrier-30ram"
+            },
+            {
+              "id": "CHP-1",
+              "kind": "pump",
+              "name": "CHP-1",
+              "role": "duty"
+            },
+            {
+              "id": "CHP-2",
+              "kind": "pump",
+              "name": "CHP-2",
+              "role": "standby"
+            },
+            {
+              "id": "CHP-3",
+              "kind": "pump",
+              "name": "CHP-3",
+              "role": "duty"
+            },
+            {
+              "id": "CHP-4",
+              "kind": "pump",
+              "name": "CHP-4",
+              "role": "standby"
+            },
+            {
+              "id": "PM-CH-1",
+              "kind": "meter",
+              "name": "Power Meter-1",
+              "label": "PM-CH-1",
+              "meterFor": "CH-1"
+            },
+            {
+              "id": "PM-CH-2",
+              "kind": "meter",
+              "name": "Power Meter-2",
+              "label": "PM-CH-2",
+              "meterFor": "CH-2"
+            },
+            {
+              "id": "PM-CH-3",
+              "kind": "meter",
+              "name": "Power Meter-3",
+              "label": "PM-CH-3",
+              "meterFor": "CH-3"
+            },
+            {
+              "id": "PM-CH-4",
+              "kind": "meter",
+              "name": "Power Meter-4",
+              "label": "PM-CH-4",
+              "meterFor": "CH-4"
+            }
+          ]
+        },
+        {
+          "id": "plc-02",
+          "interval": 300,
+          "devices": [
+            {
+              "id": "AHU-1",
+              "kind": "ahu",
+              "name": "AHU-1"
+            },
+            {
+              "id": "AHU-2",
+              "kind": "ahu",
+              "name": "AHU-2"
+            },
+            {
+              "id": "AHU-3",
+              "kind": "ahu",
+              "name": "AHU-3"
+            },
+            {
+              "id": "AHU-4",
+              "kind": "ahu",
+              "name": "AHU-4"
+            },
+            {
+              "id": "AHU-5",
+              "kind": "ahu",
+              "name": "AHU-5"
+            },
+            {
+              "id": "AHU-6",
+              "kind": "ahu",
+              "name": "AHU-6"
+            },
+            {
+              "id": "OAU-1",
+              "kind": "oau",
+              "name": "OAU-1"
+            },
+            {
+              "id": "OAU-2",
+              "kind": "oau",
+              "name": "OAU-2"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

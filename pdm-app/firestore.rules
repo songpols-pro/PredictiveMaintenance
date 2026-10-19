@@ -1,10 +1,57 @@
 rules_version = '2';
 
-// Browsers get no direct access to Firestore.
-// Demo requests are written by the website's server code with the Firebase Admin SDK
-// (src/lib/leads.ts), which is not subject to these rules. Read them in the Firebase console.
+// Browsers read only what their account was given; nothing is written from a browser.
+// Server code (demo-request form, ingestion service) uses the Firebase Admin SDK, which is not
+// subject to these rules.
+//
+// Who may open a project (custom claims on the account, set with `npm run access` in services/ingest):
+//   admin: true        service operators: every project
+//   orgs: ["acme"]     the customers the account belongs to: every project whose document says
+//                      org == one of them (set with `npm run org`), so a plant added to a customer
+//                      shows up for all of its users without touching their accounts
+//   projects: ["p"]    single plants given one by one, as an exception (e.g. a contractor)
+// src/lib/server/hvac-auth.ts applies the same rule to the /api/hvac routes.
 service cloud.firestore {
   match /databases/{database}/documents {
+    function claimList(name) {
+      let value = request.auth.token.get(name, []);
+      return value is list ? value : [];
+    }
+    function isAdmin() {
+      return request.auth != null && request.auth.token.get('admin', false) == true;
+    }
+    function hasProject(project) {
+      return request.auth != null && project in claimList('projects');
+    }
+    function inOrgs(org) {
+      return request.auth != null && org is string && org in claimList('orgs');
+    }
+
+    // A customer: its display name.
+    match /orgs/{org} {
+      allow get: if isAdmin() || inOrgs(org);
+      allow list: if isAdmin();
+      allow write: if false;
+    }
+
+    // A project (one plant): name, owner logo, device registry and the customer it belongs to ("org").
+    // Customers list their own with where("org", "in", <their orgs>); operators list all of them.
+    match /projects/{project} {
+      allow get: if isAdmin() || hasProject(project) || inOrgs(resource.data.get('org', null));
+      allow list: if isAdmin() || inOrgs(resource.data.get('org', null));
+      allow write: if false;
+
+      // Live data under the project (gateways, active alarms), written by services/ingest.
+      // An account that has the project through a customer costs one extra document read (the
+      // project document) each time this rule is evaluated.
+      match /{collection}/{document=**} {
+        allow read: if isAdmin() || hasProject(project)
+          || inOrgs(get(/databases/$(database)/documents/projects/$(project)).data.get('org', null));
+        allow write: if false;
+      }
+    }
+
+    // Everything else (demoRequests, mail): no browser access. Read them in the Firebase console.
     match /{document=**} {
       allow read, write: if false;
     }

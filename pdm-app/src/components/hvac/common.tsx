@@ -8,10 +8,12 @@ import { Chip } from "@/components/pdm/status";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n/provider";
 import type { Messages } from "@/lib/i18n/messages";
-import { deviceById, type AlarmSeverity, type RunState } from "@/lib/hvac/model";
+import { layoutName } from "@/lib/hvac/layout";
+import type { AlarmSeverity, RunState } from "@/lib/hvac/model";
 
+/** Name of a device on screen: the project's registry (or the simulation's catalog), else its id. */
 export function deviceLabel(id: string, m: Messages): string {
-  return m.hvac.deviceNames[id] ?? deviceById(id)?.name ?? id;
+  return m.hvac.deviceNames[id] ?? layoutName(id) ?? id;
 }
 
 // Same tinted status tones as the rest of PdM Monitor (see components/pdm/status.tsx).
@@ -67,7 +69,10 @@ export function ValueList({ rows, className, dense }: { rows: { label: string; v
     <dl className={cn("grid grid-cols-[minmax(0,1fr)_auto] gap-x-3", dense ? "gap-y-0.5 text-xs" : "gap-y-1.5 text-sm", className)}>
       {rows.map((r) => (
         <div key={r.label} className="contents">
-          <dt className="min-w-0 text-muted-foreground">{r.label}</dt>
+          {/* Dense (equipment cards): one line, as a short label broken mid-word reads badly in Thai. */}
+          <dt className={cn("min-w-0 text-muted-foreground", dense && "truncate")} title={dense ? r.label : undefined}>
+            {r.label}
+          </dt>
           <dd
             className={cn(
               "text-right font-semibold tabular whitespace-nowrap",

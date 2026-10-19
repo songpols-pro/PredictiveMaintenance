@@ -1,0 +1,24 @@
+{
+  "projects": [
+    {
+      "id": "demo-plant",
+      "gateways": [
+        {
+          "id": "plc-01",
+          "interval": 60,
+          "devices": [
+            { "id": "CH-1", "kind": "chiller" },
+            { "id": "CH-2", "kind": "chiller" },
+            { "id": "CHP-1", "kind": "pump" },
+            { "id": "CHP-2", "kind": "pump" },
+            { "id": "AHU-1", "kind": "ahu" },
+            { "id": "AHU-2", "kind": "ahu" },
+            { "id": "PM-CH-1", "kind": "meter" },
+            { "id": "PM-CH-2", "kind": "meter" },
+            { "id": "CP-1", "kind": "panel" }
+          ]
+        }
+      ]
+    }
+  ]
+}

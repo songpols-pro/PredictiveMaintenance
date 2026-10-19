@@ -1,0 +1,25 @@
+{
+  "name": "virtual-plc",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Gateway simulator and MQTT tools for the PdM telemetry contract (TELEMETRY.md)",
+  "type": "module",
+  "scripts": {
+    "broker": "node --import tsx src/dev-broker.ts",
+    "start": "node --import tsx src/virtual-plc.ts",
+    "tap": "node --import tsx src/tap.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=22.9"
+  },
+  "dependencies": {
+    "mqtt": "^5.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "aedes": "^1.2.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  }
+}
